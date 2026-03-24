@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MTP Master Report Generator</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>MTP Report Generator</h1>
+            <p>Automate your daily and monthly department reports</p>
+        </header>
+
+        <section class="main-content">
+            <div class="left-panel">
+                <form id="generator-form" enctype="multipart/form-data">
+                    <section class="form-section">
+                        <h2>New Daily Master Report</h2>
+                        <div class="form-group">
+                            <label for="date">Report Date</label>
+                            <input type="date" id="date" name="date" required>
+                        </div>
+                    </section>
+
+                    <section class="form-section">
+                        <h2>Source Files</h2>
+                        <p class="subtitle">Upload department .docx reports below. (Library stats are auto-extracted!)</p>
+                        <div class="file-drop-area" id="drop-area">
+                            <span class="file-icon">📄</span>
+                            <span class="file-msg">Drag & Drop files here</span>
+                            <span class="file-msg-sub">or</span>
+                            <label class="file-btn" for="files">Browse Files</label>
+                            <input type="file" id="files" name="files" multiple accept=".docx" required>
+                        </div>
+                        <ul id="file-list" class="file-list"></ul>
+                    </section>
+
+                    <button type="submit" id="submit-btn" class="btn-primary">Generate Daily Report</button>
+                    
+                    <div id="loading" class="hidden loading-row">
+                        <div class="spinner"></div>
+                        <p>Consolidating reports, please wait...</p>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="divider"></div>
+
+            <div class="right-panel">
+                <section class="form-section">
+                    <h2>Monthly Reporting</h2>
+                    <p class="subtitle">Consolidate MTP records from all previous generated daily reports.</p>
+                    
+                    <button type="button" id="monthly-btn" class="btn-secondary">Generate Monthly MTP Report</button>
+                    
+                    <div id="monthly-loading" class="hidden loading-row">
+                        <div class="spinner"></div>
+                        <p>Generating...</p>
+                    </div>
+
+                    <div class="history-section">
+                        <h3>Database Records</h3>
+                        <p class="subtitle">Dates with extracted MTP entries:</p>
+                        <ul id="history-list" class="history-list">
+                            <li>Loading...</li>
+                        </ul>
+                    </div>
+                </section>
+            </div>
+        </section>
+        
+        <div id="error-msg" class="alert hidden alert-error"></div>
+        <div id="success-msg" class="alert hidden alert-success">Report Generated Successfully! Checking downloads...</div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

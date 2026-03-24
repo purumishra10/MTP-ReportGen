@@ -1,0 +1,24 @@
+# Python environments
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+.env.*
+
+# Databases
+*.db
+*.sqlite3
+
+# Temporary files and uploads
+tmp_uploads/
+tmp/
+*.log
+
+# IDEs
+.vscode/
+.idea/
+*.swp
