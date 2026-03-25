@@ -46,9 +46,6 @@ Even if you aren't a programmer, getting this running on your computer is easy.
    ```bash
    python app.py
    ```
-4. Open your favorite web browser (Chrome, Edge, Safari) and go to this exact address:
-   **[http://127.0.0.1:5000](http://127.0.0.1:5000)**
-
 ---
 
 ## 📝 How to Use the App
