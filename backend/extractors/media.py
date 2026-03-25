@@ -13,6 +13,11 @@ def extract_images(doc_path):
         if "image" in rel.target_ref:
             img_bytes = rel.target_part.blob
             ext = rel.target_ref.split('.')[-1]
+            
+            # Filter out the Tamasoma Jyotirgamaya logo by exact file size
+            if len(img_bytes) == 105646:
+                continue
+                
             images.append((img_bytes, ext))
             
     return images

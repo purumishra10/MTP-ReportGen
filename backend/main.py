@@ -17,7 +17,7 @@ def main(date_str, source_dir=None):
     init_db()
     
     if source_dir is None:
-        source_dir = os.path.join(os.path.dirname(__file__), "../../Sample_DRs")
+        source_dir = os.path.join(os.path.dirname(__file__), "../Sample_DRs")
         
     try:
         dt = datetime.strptime(date_str, "%d.%m.%Y")
@@ -32,10 +32,10 @@ def main(date_str, source_dir=None):
     output_file = os.path.join(output_dir, f"Master_Daily_Report_{dt.strftime('%d-%m-%Y')}.docx")
     
     # Empty template is expected to be statically present in Sample_DRs
-    template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../Sample_DRs/Empty Daily DR.docx"))
+    template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../Sample_DRs/Empty Daily DR.docx"))
     
     all_attendance = []
-    all_mtp = []
+    all_mtp = {}
     all_images = []
     found_departments = set()
     library_data = None
@@ -72,8 +72,7 @@ def main(date_str, source_dir=None):
         
         mtp = extract_mtp(filepath)
         if mtp:
-            all_mtp.append(f"--- {dept_name} ---")
-            all_mtp.extend(mtp)
+            all_mtp[dept_name] = mtp
             mtp_text_joined = "\n".join(mtp)
             save_mtp_record(date_str, dept_name, mtp_text_joined)
             
@@ -85,7 +84,8 @@ def main(date_str, source_dir=None):
         if d not in found_departments:
             missing_depts.append(d)
         
-    print(f"Extracted {len(all_attendance)} absent remarks, {len(all_mtp)} paragraphs of MTP text.")
+    mtp_count = sum(len(v) for v in all_mtp.values())
+    print(f"Extracted {len(all_attendance)} absent remarks, {mtp_count} paragraphs of MTP text.")
     generate_master_report(template_path, output_file, all_attendance, all_mtp, all_images, missing_depts, library_data)
     
     return output_file

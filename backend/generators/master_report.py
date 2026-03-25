@@ -27,10 +27,31 @@ def generate_master_report(template_path, output_path, attendance_data, mtp_data
         
         if not mtp_data and not missing_depts:
             mtp_cell.text += "Data Not Received\n"
-        else:
-            for text in mtp_data:
-                if text:
-                    mtp_cell.add_paragraph(text)
+            
+        placed_depts = set()
+        for row in table_2.rows:
+            if len(row.cells) > 1:
+                cell = row.cells[1]
+                text = cell.text.strip()
+                if text.startswith("HOD-"):
+                    dept_key = text.replace("HOD-", "").replace(":", "").strip()
+                    if dept_key in mtp_data:
+                        cell.text = f"HOD-{dept_key}:\n"
+                        for p_text in mtp_data[dept_key]:
+                            if p_text:
+                                cell.add_paragraph(p_text)
+                        placed_depts.add(dept_key)
+                        
+        for dept, paragraphs in mtp_data.items():
+            if dept not in placed_depts:
+                new_row = table_2.add_row()
+                if len(new_row.cells) > 1:
+                    new_row.cells[0].text = ""  # blank for numeral column
+                    new_cell = new_row.cells[1]
+                    new_cell.text = f"HOD-{dept}:\n"
+                    for p_text in paragraphs:
+                        if p_text:
+                            new_cell.add_paragraph(p_text)
 
         for img_bytes, ext in image_data:
             try:

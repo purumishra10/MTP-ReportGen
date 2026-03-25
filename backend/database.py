@@ -53,5 +53,12 @@ def get_monthly_records():
     conn.close()
     return results
 
+def delete_record(report_date):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM mtp_records WHERE report_date = ?', (report_date,))
+    conn.commit()
+    conn.close()
+
 if __name__ == '__main__':
     init_db()

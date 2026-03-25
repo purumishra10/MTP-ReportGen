@@ -2,7 +2,7 @@ import os
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from main import main as generate_report
-from database import get_daily_reports
+from database import get_daily_reports, delete_record
 from generators.monthly_report import generate_monthly_report
 from datetime import datetime
 
@@ -22,6 +22,14 @@ def get_history():
     try:
         reports = get_daily_reports()
         return jsonify({"dates": reports})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/history/<date>', methods=['DELETE'])
+def delete_history_record(date):
+    try:
+        delete_record(date)
+        return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

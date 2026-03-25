@@ -80,7 +80,13 @@ async function fetchHistory() {
         if (data.dates && data.dates.length > 0) {
             data.dates.forEach(date => {
                 const li = document.createElement('li');
-                li.innerText = date;
+                li.style.display = 'flex';
+                li.style.justifyContent = 'space-between';
+                li.style.alignItems = 'center';
+                li.innerHTML = `
+                    <span>${date}</span>
+                    <span style="color: #c92a2a; cursor: pointer; font-weight: bold; font-size: 1.1em;" title="Delete Record" onclick="deleteRecord('${date}')">✕</span>
+                `;
                 historyList.appendChild(li);
             });
         } else {
@@ -183,5 +189,20 @@ function showError(msg) {
     errorMsg.classList.remove('hidden');
 }
 
+async function deleteRecord(date) {
+    try {
+        const res = await fetch(`/api/history/${date}`, { method: 'DELETE' });
+        if (res.ok) {
+            fetchHistory();
+        } else {
+            const data = await res.json();
+            showError(data.error || 'Failed to delete record');
+        }
+    } catch (e) {
+        showError('Network error while deleting record');
+    }
+}
+
 // Make accessible globally for inline onclick
 window.removeFile = removeFile;
+window.deleteRecord = deleteRecord;
