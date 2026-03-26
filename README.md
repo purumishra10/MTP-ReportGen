@@ -7,7 +7,7 @@ Welcome to the **MTP Master Report Generator**! This tool is designed to save yo
 * **Smart Organization:** MTP paragraphs are automatically mapped to their respective HODs (Head of Departments) in the template table. If a department isn't explicitly listed, the app automatically generates a new customized row for it!
 * **Library Stats Extraction:** It automatically detects library reports and mathematically pulls out the "books issued", "returned", and "visitor" counts without you lifting a finger. 
 * **One-Click Monthly Consolidation:** At the end of the month, simply click the "Generate Monthly" button to instantly compile all the daily MTP records you've generated over the last 30 days into a single comprehensive file.
-* **Mistake Forgiveness:** Made a mistake? The "Database Records" panel lets you seamlessly delete erroneous daily record tags from the database with a single click of a red '✕'.
+* **Mistake Forgiveness:** Made a mistake? The "Database Records" panel lets you seamlessly delete erroneous daily record tags from the database with a single click of a red '❌'.
 
 ---
 
