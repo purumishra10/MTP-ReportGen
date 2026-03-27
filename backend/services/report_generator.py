@@ -1,525 +1,713 @@
+"""
+DOCX Report Generator
+Generates a consolidated daily report in .docx format matching the VNRVJIET template.
+Events and participation are rendered as narrative paragraphs with embedded images.
+"""
+
 import io
 from datetime import datetime
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable, KeepTogether,
-)
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
- 
- 
-# ── Colour palette ────────────────────────────────────────────────────────────
-DARK_BLUE   = colors.HexColor("#1a2f5a")
-MID_BLUE    = colors.HexColor("#2e5090")
-LIGHT_BLUE  = colors.HexColor("#dce6f7")
-LIGHT_GRAY  = colors.HexColor("#f5f5f5")
-MID_GRAY    = colors.HexColor("#cccccc")
-DARK_GRAY   = colors.HexColor("#444444")
-WHITE       = colors.white
-RED_ALERT   = colors.HexColor("#c0392b")
-AMBER       = colors.HexColor("#d35400")
- 
-PAGE_W, PAGE_H = A4
-L_MARGIN = R_MARGIN = 1.8 * cm
-T_MARGIN = B_MARGIN = 2.0 * cm
-CONTENT_W = PAGE_W - L_MARGIN - R_MARGIN
- 
- 
-# ── Style helpers ─────────────────────────────────────────────────────────────
-def _styles():
-    base = getSampleStyleSheet()
- 
-    def add(name, **kw):
-        if name not in base:
-            base.add(ParagraphStyle(name=name, **kw))
-        return base[name]
- 
-    add("ReportTitle",  fontSize=16, fontName="Helvetica-Bold",
-        textColor=DARK_BLUE, spaceAfter=2, alignment=TA_CENTER)
-    add("ReportSub",    fontSize=10, fontName="Helvetica",
-        textColor=DARK_GRAY, spaceAfter=8, alignment=TA_CENTER)
-    add("SectionHead",  fontSize=11, fontName="Helvetica-Bold",
-        textColor=WHITE,    spaceBefore=10, spaceAfter=4,
-        backColor=DARK_BLUE, leftIndent=6, leading=16)
-    add("SubHead",      fontSize=10, fontName="Helvetica-Bold",
-        textColor=MID_BLUE, spaceBefore=6, spaceAfter=3)
-    add("Body",         fontSize=9,  fontName="Helvetica",
-        textColor=DARK_GRAY, spaceAfter=3, leading=13)
-    add("BodyBold",     fontSize=9,  fontName="Helvetica-Bold",
-        textColor=DARK_GRAY, spaceAfter=3)
-    add("Small",        fontSize=8,  fontName="Helvetica",
-        textColor=DARK_GRAY, spaceAfter=2)
-    add("Alert",        fontSize=9,  fontName="Helvetica-Bold",
-        textColor=RED_ALERT, spaceAfter=3)
-    add("FooterStyle",  fontSize=7,  fontName="Helvetica",
-        textColor=MID_GRAY,  alignment=TA_CENTER)
-    return base
- 
- 
-def _section_header(text, styles):
-    """Blue banner heading."""
-    return Paragraph(f"&nbsp;&nbsp;{text}", styles["SectionHead"])
- 
- 
-def _sub_header(text, styles):
-    return Paragraph(text, styles["SubHead"])
- 
- 
-def _body(text, styles, bold=False):
-    key = "BodyBold" if bold else "Body"
-    return Paragraph(str(text), styles[key])
- 
- 
-def _hr():
-    return HRFlowable(width="100%", thickness=0.5,
-                      color=MID_GRAY, spaceAfter=4, spaceBefore=2)
- 
- 
-def _spacer(h=0.25):
-    return Spacer(1, h * cm)
- 
- 
+from docx import Document
+from docx.shared import Inches, Pt, Cm, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.oxml.ns import qn, nsdecls
+from docx.oxml import parse_xml
+
+
+# ── Colour constants ──────────────────────────────────────────────────────────
+DARK_BLUE = RGBColor(0x1A, 0x2F, 0x5A)
+MID_BLUE = RGBColor(0x2E, 0x50, 0x90)
+ACCENT_GREEN = RGBColor(0x27, 0x7D, 0x4E)
+WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+BODY_GRAY = RGBColor(0x33, 0x33, 0x33)
+LIGHT_GRAY_HEX = "F2F2F2"
+DARK_BLUE_HEX = "1A2F5A"
+MID_BLUE_HEX = "2E5090"
+
+
+# ── Helper functions ──────────────────────────────────────────────────────────
+
+def _set_cell_shading(cell, color_hex: str):
+    """Set background shading on a table cell."""
+    shading = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{color_hex}"/>')
+    cell._tc.get_or_add_tcPr().append(shading)
+
+
+def _set_cell_text(cell, text: str, bold: bool = False, font_size: int = 9,
+                   color: RGBColor = None, alignment=WD_ALIGN_PARAGRAPH.LEFT):
+    """Set text in a table cell with formatting."""
+    cell.text = ""
+    paragraph = cell.paragraphs[0]
+    paragraph.alignment = alignment
+    paragraph.paragraph_format.space_before = Pt(2)
+    paragraph.paragraph_format.space_after = Pt(2)
+    run = paragraph.add_run(str(text))
+    run.bold = bold
+    run.font.size = Pt(font_size)
+    if color:
+        run.font.color.rgb = color
+    run.font.name = "Calibri"
+
+
+def _add_header_row(table, headers: list[str]):
+    """Style the first row of a table as a header."""
+    row = table.rows[0]
+    for i, header in enumerate(headers):
+        cell = row.cells[i]
+        _set_cell_shading(cell, DARK_BLUE_HEX)
+        _set_cell_text(cell, header, bold=True, font_size=9,
+                       color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
+
+def _add_data_row(table, values: list[str], row_idx: int):
+    """Add a data row with alternating gray/white background."""
+    row = table.rows[row_idx]
+    bg = LIGHT_GRAY_HEX if row_idx % 2 == 0 else "FFFFFF"
+    for i, val in enumerate(values):
+        cell = row.cells[i]
+        _set_cell_shading(cell, bg)
+        _set_cell_text(cell, str(val), font_size=9,
+                       alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
+
+def _add_section_heading(doc, number: int, title: str):
+    """Add a numbered section heading with blue bottom border."""
+    heading = doc.add_paragraph()
+    heading.paragraph_format.space_before = Pt(12)
+    heading.paragraph_format.space_after = Pt(4)
+    run = heading.add_run(f"  {number}.  {title}")
+    run.bold = True
+    run.font.size = Pt(11)
+    run.font.color.rgb = DARK_BLUE
+    run.font.name = "Calibri"
+    # Bottom border
+    pPr = heading._p.get_or_add_pPr()
+    pBdr = parse_xml(
+        f'<w:pBdr {nsdecls("w")}>'
+        f'<w:bottom w:val="single" w:sz="6" w:space="1" w:color="{DARK_BLUE_HEX}"/>'
+        f'</w:pBdr>'
+    )
+    pPr.append(pBdr)
+
+
+def _add_sub_heading(doc, title: str):
+    """Add a sub-section heading."""
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(6)
+    p.paragraph_format.space_after = Pt(2)
+    run = p.add_run(title)
+    run.bold = True
+    run.font.size = Pt(10)
+    run.font.color.rgb = MID_BLUE
+    run.font.name = "Calibri"
+
+
+def _add_body_text(doc, text: str, bold_prefix: str = None):
+    """Add a body paragraph with optional bold prefix."""
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(2)
+    p.paragraph_format.space_after = Pt(4)
+    p.paragraph_format.left_indent = Cm(0.5)
+
+    if bold_prefix:
+        run = p.add_run(bold_prefix)
+        run.bold = True
+        run.font.size = Pt(9)
+        run.font.color.rgb = DARK_BLUE
+        run.font.name = "Calibri"
+
+    run = p.add_run(text)
+    run.font.size = Pt(9)
+    run.font.color.rgb = BODY_GRAY
+    run.font.name = "Calibri"
+    return p
+
+
+def _add_importance_badge(paragraph, importance: str):
+    """Add a colored importance badge to a paragraph."""
+    color_map = {
+        "high": RGBColor(0xC0, 0x39, 0x2B),    # Red
+        "medium": RGBColor(0xE6, 0x8A, 0x00),   # Orange
+        "low": RGBColor(0x7F, 0x8C, 0x8D),      # Gray
+    }
+    badge_color = color_map.get(importance.lower(), BODY_GRAY)
+    run = paragraph.add_run(f"  [{importance.upper()}]")
+    run.bold = True
+    run.font.size = Pt(8)
+    run.font.color.rgb = badge_color
+    run.font.name = "Calibri"
+
+
+def _insert_images_for_dept(doc, dept_code: str, all_images: list[dict], max_images: int = 2):
+    """Insert images from a department into the document."""
+    dept_images = [img for img in all_images if img["dept_code"] == dept_code]
+    if not dept_images:
+        return
+
+    # Limit images per department
+    for img in dept_images[:max_images]:
+        try:
+            img_stream = io.BytesIO(img["image_bytes"])
+            doc.add_picture(img_stream, width=Inches(3.5))
+            # Center the image
+            last_paragraph = doc.paragraphs[-1]
+            last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            last_paragraph.paragraph_format.space_before = Pt(4)
+            last_paragraph.paragraph_format.space_after = Pt(4)
+        except Exception as e:
+            print(f"[WARNING] Failed to insert image {img['filename']}: {e}")
+
+
+def _val(v):
+    """Format a value for display — use '—' for None/null."""
+    if v is None:
+        return "—"
+    return str(v)
+
+
 def _pct(val):
+    """Format percentage."""
     if val is None:
         return "—"
     return f"{val:.1f}%"
- 
- 
-def _val(v):
-    return "—" if v is None else str(v)
- 
- 
-# ── Table style builders ──────────────────────────────────────────────────────
-def _header_table_style(n_header_rows=1):
-    return TableStyle([
-        ("BACKGROUND",  (0, 0), (-1, n_header_rows - 1), DARK_BLUE),
-        ("TEXTCOLOR",   (0, 0), (-1, n_header_rows - 1), WHITE),
-        ("FONTNAME",    (0, 0), (-1, n_header_rows - 1), "Helvetica-Bold"),
-        ("FONTSIZE",    (0, 0), (-1, -1), 8),
-        ("FONTNAME",    (0, n_header_rows), (-1, -1), "Helvetica"),
-        ("ROWBACKGROUNDS", (0, n_header_rows), (-1, -1), [WHITE, LIGHT_GRAY]),
-        ("ALIGN",       (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN",      (0, 0), (-1, -1), "MIDDLE"),
-        ("GRID",        (0, 0), (-1, -1), 0.4, MID_GRAY),
-        ("TOPPADDING",  (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
-        ("LEFTPADDING", (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING",(0, 0), (-1, -1), 5),
-    ])
- 
- 
+
+
 # ── Section builders ──────────────────────────────────────────────────────────
- 
-def _build_attendance(report, styles):
-    story = []
-    story.append(_section_header("1.  Staff Attendance Report (Dept-wise)", styles))
-    story.append(_spacer(0.15))
- 
+
+def _build_attendance(doc, report, section_num: int) -> int:
+    """Build the staff attendance section (table format)."""
     depts = report.get("attendance", {}).get("departments", [])
     if not depts:
-        story.append(_body("No attendance data available.", styles))
-        return story
- 
-    headers = ["Dept", "On Rolls", "Absent", "Present", "Attendance %"]
-    rows = [headers]
-    for d in depts:
+        return section_num
+
+    _add_section_heading(doc, section_num, "Staff Attendance Report (Department-wise)")
+
+    headers = ["S.No", "Department", "On Rolls", "Absent", "Present", "Attendance %"]
+    table = doc.add_table(rows=1 + len(depts) + 1, cols=6)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = True
+    _add_header_row(table, headers)
+
+    total_rolls = total_absent = total_present = 0
+    for i, d in enumerate(depts):
+        on_rolls = d.get("on_rolls", 0) or 0
+        absent = d.get("absent", 0) or 0
+        present = d.get("present", 0) or 0
         pct = _pct(d.get("percentage"))
-        rows.append([
-            d.get("dept", "").upper(),
-            _val(d.get("on_rolls")),
-            _val(d.get("absent")),
-            _val(d.get("present")),
-            pct,
-        ])
- 
+        total_rolls += on_rolls
+        total_absent += absent
+        total_present += present
+        _add_data_row(table, [
+            str(i + 1), d.get("dept", "").upper(),
+            _val(d.get("on_rolls")), _val(d.get("absent")),
+            _val(d.get("present")), pct,
+        ], i + 1)
+
     # Totals row
-    total_rolls   = sum(d.get("on_rolls", 0) or 0 for d in depts)
-    total_absent  = sum(d.get("absent",   0) or 0 for d in depts)
-    total_present = sum(d.get("present",  0) or 0 for d in depts)
-    total_pct     = round(total_present / total_rolls * 100, 1) if total_rolls else 0
-    rows.append(["TOTAL", str(total_rolls), str(total_absent),
-                 str(total_present), _pct(total_pct)])
- 
-    col_w = [2.5*cm, 2.5*cm, 2.5*cm, 2.5*cm, 3*cm]
-    tbl = Table(rows, colWidths=col_w, repeatRows=1)
-    style = _header_table_style()
-    # Bold + dark bg for totals row
-    style.add("BACKGROUND",  (0, -1), (-1, -1), MID_BLUE)
-    style.add("TEXTCOLOR",   (0, -1), (-1, -1), WHITE)
-    style.add("FONTNAME",    (0, -1), (-1, -1), "Helvetica-Bold")
-    tbl.setStyle(style)
-    story.append(tbl)
- 
+    total_pct = round(total_present / total_rolls * 100, 1) if total_rolls else 0
+    total_row = table.rows[-1]
+    for i, val in enumerate(["", "TOTAL", str(total_rolls), str(total_absent),
+                              str(total_present), _pct(total_pct)]):
+        cell = total_row.cells[i]
+        _set_cell_shading(cell, MID_BLUE_HEX)
+        _set_cell_text(cell, val, bold=True, font_size=9,
+                       color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
     # Library attendance
     lib = report.get("attendance", {}).get("library")
     if lib:
-        story.append(_spacer(0.3))
-        story.append(_sub_header("Library Staff Attendance", styles))
-        lib_rows = [
-            ["On Rolls", "Absent (w/ leave)", "Absent (w/o leave)", "Present"],
-            [_val(lib.get("on_rolls")), _val(lib.get("absent_with_leave")),
-             _val(lib.get("absent_without_leave")), _val(lib.get("present"))],
-        ]
-        lib_tbl = Table(lib_rows, colWidths=[3.5*cm]*4)
-        lib_tbl.setStyle(_header_table_style())
-        story.append(lib_tbl)
- 
-    return story
- 
- 
-def _build_mtp(report, styles):
-    """Section 2 — Maintenance / infrastructure issues (MTP)."""
-    issues = [i for i in report.get("infrastructure_issues", []) if i.get("status") == "pending"]
+        _add_sub_heading(doc, "Library Staff Attendance")
+        lib_headers = ["On Rolls", "Absent (w/ leave)", "Absent (w/o leave)", "Present"]
+        lib_table = doc.add_table(rows=2, cols=4)
+        lib_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        _add_header_row(lib_table, lib_headers)
+        _add_data_row(lib_table, [
+            _val(lib.get("on_rolls")), _val(lib.get("absent_with_leave")),
+            _val(lib.get("absent_without_leave")), _val(lib.get("present")),
+        ], 1)
+
+    return section_num + 1
+
+
+def _build_infrastructure(doc, report, section_num: int) -> int:
+    """Build infrastructure issues section (table, pending only)."""
+    issues = [i for i in report.get("infrastructure_issues", [])
+              if i.get("status", "").lower() == "pending"]
     if not issues:
-        return []
- 
-    story = [_spacer(), _section_header("2.  MTP (Maintenance & Infrastructure Issues)", styles), _spacer(0.15)]
-    headers = ["S.No", "Dept", "Description", "Reported On", "Remarks"]
-    rows = [headers]
-    for idx, iss in enumerate(issues, 1):
-        rows.append([
-            str(idx),
-            iss.get("dept", "").upper(),
-            iss.get("description", "—"),
-            _val(iss.get("reported_on")),
+        return section_num
+
+    _add_section_heading(doc, section_num, "Infrastructure Issues / Maintenance (Pending)")
+
+    headers = ["S.No", "Department", "Description", "Reported On", "Remarks"]
+    table = doc.add_table(rows=1 + len(issues), cols=5)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _add_header_row(table, headers)
+
+    for i, iss in enumerate(issues):
+        row = table.rows[i + 1]
+        values = [
+            str(i + 1), iss.get("dept", "").upper(),
+            iss.get("description", "—"), _val(iss.get("reported_on")),
             _val(iss.get("remarks")),
-        ])
-    col_w = [1*cm, 1.8*cm, 8*cm, 2.5*cm, 3*cm]
-    tbl = Table(rows, colWidths=col_w, repeatRows=1)
-    tbl.setStyle(_header_table_style())
-    story.append(tbl)
-    return story
- 
- 
-def _dept_has_content(dept_code, report):
-    """Return True if a dept has anything reportable beyond attendance."""
-    code = dept_code.lower()
-    for ev in report.get("events", []):
-        if ev.get("dept", "").lower() == code:
-            return True
-    for sp in report.get("staff_participation", []):
-        if sp.get("dept", "").lower() == code:
-            return True
-    for sc in report.get("staff_changes", []):
-        if sc.get("dept", "").lower() == code:
-            return True
-    for inc in report.get("incidents", []):
-        if inc.get("dept", "").lower() == code:
-            return True
-    for om in report.get("other_matters", []):
-        if om.get("dept", "").lower() == code:
-            return True
-    return False
- 
- 
-def _build_hod_section(dept_code, dept_label, report, styles, section_num):
-    """Build a single HOD dept block. Returns [] if nothing to report."""
-    code = dept_code.lower()
- 
-    events   = [e for e in report.get("events", [])           if e.get("dept","").lower() == code]
-    staff_p  = [s for s in report.get("staff_participation",[]) if s.get("dept","").lower() == code]
-    changes  = [c for c in report.get("staff_changes", [])    if c.get("dept","").lower() == code]
-    incidents= [i for i in report.get("incidents", [])        if i.get("dept","").lower() == code]
-    others   = [o for o in report.get("other_matters", [])    if o.get("dept","").lower() == code]
- 
-    if not any([events, staff_p, changes, incidents, others]):
-        return []
- 
-    story = [_spacer(), _section_header(f"{section_num}.  HOD — {dept_label}", styles), _spacer(0.1)]
- 
-    # Events
-    if events:
-        story.append(_sub_header("Events / Seminars / Workshops", styles))
-        for ev in events:
-            parts = [f"<b>{ev.get('name','—')}</b>"]
-            if ev.get("duration"):      parts.append(f"Duration: {ev['duration']}")
-            if ev.get("participants_internal"): parts.append(f"Internal participants: {ev['participants_internal']}")
-            if ev.get("participants_external"): parts.append(f"External participants: {ev['participants_external']}")
-            if ev.get("resource_person"):       parts.append(f"Resource person: {ev['resource_person']}")
-            story.append(_body(" &nbsp;|&nbsp; ".join(parts), styles))
- 
-    # Staff changes
-    if changes:
-        story.append(_sub_header("Staff Joined / Left", styles))
-        for c in changes:
-            story.append(_body(
-                f"{c.get('name','—')} ({c.get('designation','—')}) — "
-                f"<b>{c.get('type','').upper()}</b> on {c.get('date','—')}",
-                styles
-            ))
- 
-    # Incidents
-    if incidents:
-        story.append(_sub_header("Incidents", styles))
-        for inc in incidents:
-            story.append(Paragraph(
-                f"<b>{inc.get('name','—')}</b> (ID: {_val(inc.get('id'))}): "
-                f"{inc.get('brief','—')}. Remarks: {_val(inc.get('remarks'))}",
-                styles["Alert"]
-            ))
- 
-    # Other matters
-    if others:
-        story.append(_sub_header("Other Matters", styles))
-        for om in others:
-            story.append(_body(om.get("description", "—"), styles))
- 
-    return story
- 
- 
-def _build_hod_sections(report, styles, start_num=3):
-    """
-    Builds HOD sections.
-    Fixed order: CSE group (cse, cys, ds, aiml, aids) → CE (civil) →
-    then any other dept that has content.
-    """
-    story = []
-    num = start_num
- 
-    CSE_GROUP = [
-        ("cse",   "CSE"),
-        ("cys",   "CSE (CyS)"),
-        ("ds",    "CSE (DS)"),
-        ("aiml",  "CSE (AI&ML)"),
-        ("aids",  "CSE (AI&DS)"),
-    ]
-    CE_GROUP = [("civil", "CE")]
- 
-    KNOWN = {c for c, _ in CSE_GROUP + CE_GROUP}
- 
-    # Collect all dept codes that appear anywhere in the report
-    all_codes = set()
-    for key in ["events", "staff_participation", "staff_changes", "incidents", "other_matters"]:
-        for item in report.get(key, []):
-            all_codes.add(item.get("dept", "").lower())
-    for d in report.get("attendance", {}).get("departments", []):
-        all_codes.add(d.get("dept", "").lower())
- 
-    OTHER_DEPTS = sorted(all_codes - KNOWN - {"", "library", "lib", "lirc"})
- 
-    for code, label in CSE_GROUP:
-        block = _build_hod_section(code, label, report, styles, num)
-        if block:
-            story.extend(block)
-            num += 1
- 
-    for code, label in CE_GROUP:
-        block = _build_hod_section(code, label, report, styles, num)
-        if block:
-            story.extend(block)
-            num += 1
- 
-    for code in OTHER_DEPTS:
-        if _dept_has_content(code, report):
-            block = _build_hod_section(code, code.upper(), report, styles, num)
-            if block:
-                story.extend(block)
-                num += 1
- 
-    return story, num
- 
- 
-def _build_participation(report, styles, section_num):
-    staff_p   = report.get("staff_participation", [])
+        ]
+        bg = LIGHT_GRAY_HEX if i % 2 == 0 else "FFFFFF"
+        for j, val in enumerate(values):
+            cell = row.cells[j]
+            _set_cell_shading(cell, bg)
+            align = WD_ALIGN_PARAGRAPH.LEFT if j == 2 else WD_ALIGN_PARAGRAPH.CENTER
+            _set_cell_text(cell, val, font_size=9, alignment=align)
+
+    return section_num + 1
+
+
+def _build_events(doc, report, section_num: int, all_images: list[dict]) -> int:
+    """Build events/seminars/workshops in NARRATIVE format with images."""
+    events = report.get("events", [])
+    if not events:
+        return section_num
+
+    # Sort by importance: high first, then medium, then low
+    importance_order = {"high": 0, "medium": 1, "low": 2}
+    events_sorted = sorted(events, key=lambda e: importance_order.get(
+        (e.get("importance") or "low").lower(), 3))
+
+    _add_section_heading(doc, section_num, "Events / Seminars / Workshops")
+
+    for ev in events_sorted:
+        dept = ev.get("dept", "Unknown")
+        name = ev.get("name", "Untitled Event")
+        summary = ev.get("summary", "")
+        importance = ev.get("importance", "medium")
+        date_str = ev.get("date", "")
+        duration = ev.get("duration", "")
+        internal = ev.get("participants_internal")
+        external = ev.get("participants_external")
+        resource_person = ev.get("resource_person")
+
+        # Event title with department
+        p = doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(6)
+        p.paragraph_format.space_after = Pt(2)
+        p.paragraph_format.left_indent = Cm(0.3)
+
+        # Bold event name
+        run = p.add_run(f"● {name}")
+        run.bold = True
+        run.font.size = Pt(10)
+        run.font.color.rgb = MID_BLUE
+        run.font.name = "Calibri"
+
+        # Department tag
+        run = p.add_run(f"  — {dept}")
+        run.font.size = Pt(9)
+        run.font.color.rgb = BODY_GRAY
+        run.font.name = "Calibri"
+        run.italic = True
+
+        # Importance badge
+        _add_importance_badge(p, importance)
+
+        # Meta info line (date, participants, resource person)
+        meta_parts = []
+        if date_str:
+            meta_parts.append(f"Date: {date_str}")
+        if duration:
+            meta_parts.append(f"Duration: {duration}")
+        if internal is not None:
+            meta_parts.append(f"Internal: {internal}")
+        if external is not None:
+            meta_parts.append(f"External: {external}")
+        if resource_person:
+            meta_parts.append(f"Resource Person: {resource_person}")
+
+        if meta_parts:
+            meta_p = doc.add_paragraph()
+            meta_p.paragraph_format.space_before = Pt(0)
+            meta_p.paragraph_format.space_after = Pt(2)
+            meta_p.paragraph_format.left_indent = Cm(0.8)
+            run = meta_p.add_run("  ".join(meta_parts))
+            run.font.size = Pt(8)
+            run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+            run.font.name = "Calibri"
+            run.italic = True
+
+        # Summary narrative
+        if summary:
+            _add_body_text(doc, summary)
+
+    # Insert ALL department images as a photo gallery at the end of events
+    if all_images:
+        _add_sub_heading(doc, "Photos from Department Activities")
+        inserted_count = 0
+        # Group by department and insert up to 2 per department
+        seen_depts = set()
+        for img in all_images:
+            dept_code = img["dept_code"]
+            if dept_code in seen_depts:
+                continue
+            # Get up to 2 images for this dept
+            dept_imgs = [im for im in all_images if im["dept_code"] == dept_code][:2]
+            for di in dept_imgs:
+                try:
+                    img_stream = io.BytesIO(di["image_bytes"])
+                    doc.add_picture(img_stream, width=Inches(3.5))
+                    last_p = doc.paragraphs[-1]
+                    last_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    last_p.paragraph_format.space_before = Pt(4)
+                    last_p.paragraph_format.space_after = Pt(2)
+                    # Caption
+                    cap = doc.add_paragraph()
+                    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    cap.paragraph_format.space_after = Pt(6)
+                    run = cap.add_run(f"— {dept_code.upper()} Department —")
+                    run.font.size = Pt(8)
+                    run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+                    run.font.name = "Calibri"
+                    run.italic = True
+                    inserted_count += 1
+                except Exception as e:
+                    print(f"[WARNING] Failed to insert image {di['filename']}: {e}")
+            seen_depts.add(dept_code)
+
+        if inserted_count > 0:
+            print(f"[INFO] Inserted {inserted_count} images into report")
+
+    return section_num + 1
+
+
+def _build_participation(doc, report, section_num: int, all_images: list[dict]) -> int:
+    """Build staff & student participation in NARRATIVE format."""
+    staff_p = report.get("staff_participation", [])
     student_p = report.get("student_participation", [])
- 
+
     if not staff_p and not student_p:
-        return [], section_num
- 
-    story = [_spacer(), _section_header(f"{section_num}.  Participation by Staff / Students", styles), _spacer(0.1)]
- 
+        return section_num
+
+    _add_section_heading(doc, section_num, "Participation by Staff & Students (External)")
+
     if staff_p:
-        story.append(_sub_header("Staff Participation", styles))
-        headers = ["S.No", "Name", "Dept", "Event", "Role", "Date"]
-        rows = [headers]
-        for i, s in enumerate(staff_p, 1):
-            rows.append([
-                str(i),
-                s.get("name", "—"),
-                s.get("dept", "—").upper(),
-                s.get("event", "—"),
-                s.get("status", "—"),
-                s.get("date", "—"),
-            ])
-        col_w = [0.8*cm, 3.5*cm, 1.5*cm, 6*cm, 2*cm, 2.5*cm]
-        tbl = Table(rows, colWidths=col_w, repeatRows=1)
-        tbl.setStyle(_header_table_style())
-        story.append(tbl)
- 
+        _add_sub_heading(doc, "Staff Participation")
+        for s in staff_p:
+            name = s.get("name", "")
+            dept = s.get("dept", "")
+            event = s.get("event", "")
+            role = s.get("role", s.get("status", ""))
+            date_str = s.get("date", "")
+            summary = s.get("summary", "")
+
+            # Bullet point with key info
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(2)
+            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.left_indent = Cm(0.5)
+
+            run = p.add_run(f"● {name}")
+            run.bold = True
+            run.font.size = Pt(9)
+            run.font.color.rgb = DARK_BLUE
+            run.font.name = "Calibri"
+
+            detail_parts = []
+            if dept:
+                detail_parts.append(dept)
+            if role:
+                detail_parts.append(role)
+            if event:
+                detail_parts.append(f'at "{event}"')
+            if date_str:
+                detail_parts.append(f"({date_str})")
+
+            if detail_parts:
+                run = p.add_run(f"  — {', '.join(detail_parts)}")
+                run.font.size = Pt(9)
+                run.font.color.rgb = BODY_GRAY
+                run.font.name = "Calibri"
+
+            if summary:
+                _add_body_text(doc, summary)
+
     if student_p:
-        story.append(_spacer(0.25))
-        story.append(_sub_header("Student Participation", styles))
-        headers = ["S.No", "Name", "Dept", "Event", "Role", "Date"]
-        rows = [headers]
-        for i, s in enumerate(student_p, 1):
-            rows.append([
-                str(i),
-                s.get("name", "—"),
-                s.get("dept", "—").upper(),
-                s.get("event", "—"),
-                s.get("status", "—"),
-                s.get("date", "—"),
-            ])
-        col_w = [0.8*cm, 3.5*cm, 1.5*cm, 6*cm, 2*cm, 2.5*cm]
-        tbl = Table(rows, colWidths=col_w, repeatRows=1)
-        tbl.setStyle(_header_table_style())
-        story.append(tbl)
- 
-    return story, section_num + 1
- 
- 
-def _build_library(report, styles, section_num):
+        _add_sub_heading(doc, "Student Participation")
+        for s in student_p:
+            name = s.get("name", "")
+            dept = s.get("dept", "")
+            event = s.get("event", "")
+            achievement = s.get("achievement", s.get("status", ""))
+            date_str = s.get("date", "")
+            summary = s.get("summary", "")
+
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(2)
+            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.left_indent = Cm(0.5)
+
+            run = p.add_run(f"● {name}")
+            run.bold = True
+            run.font.size = Pt(9)
+            run.font.color.rgb = DARK_BLUE
+            run.font.name = "Calibri"
+
+            detail_parts = []
+            if dept:
+                detail_parts.append(dept)
+            if event:
+                detail_parts.append(f'at "{event}"')
+            if achievement:
+                detail_parts.append(f"— {achievement}")
+            if date_str:
+                detail_parts.append(f"({date_str})")
+
+            if detail_parts:
+                run = p.add_run(f"  — {', '.join(detail_parts)}")
+                run.font.size = Pt(9)
+                run.font.color.rgb = BODY_GRAY
+                run.font.name = "Calibri"
+
+            if summary:
+                _add_body_text(doc, summary)
+
+    return section_num + 1
+
+
+def _build_staff_changes(doc, report, section_num: int) -> int:
+    """Build staff joined/left section (table)."""
+    changes = report.get("staff_changes", [])
+    if not changes:
+        return section_num
+
+    _add_section_heading(doc, section_num, "Staff Joined / Left")
+
+    headers = ["S.No", "Name", "Department", "Designation", "Joined/Left", "Date"]
+    table = doc.add_table(rows=1 + len(changes), cols=6)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _add_header_row(table, headers)
+
+    for i, c in enumerate(changes):
+        _add_data_row(table, [
+            str(i + 1), c.get("name", "—"), c.get("dept", "—").upper(),
+            c.get("designation", "—"), c.get("type", "—").upper(), c.get("date", "—"),
+        ], i + 1)
+
+    return section_num + 1
+
+
+def _build_classwork_adjustments(doc, report, section_num: int) -> int:
+    """Build classwork adjustments summary (table)."""
+    adjustments = report.get("classwork_adjustments", [])
+    if not adjustments:
+        return section_num
+
+    _add_section_heading(doc, section_num, "Classwork Adjustments / Lecture Interchange")
+
+    headers = ["S.No", "Department", "Number of Adjustments"]
+    table = doc.add_table(rows=1 + len(adjustments), cols=3)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _add_header_row(table, headers)
+
+    for i, adj in enumerate(adjustments):
+        _add_data_row(table, [
+            str(i + 1), adj.get("dept", "").upper(), _val(adj.get("count")),
+        ], i + 1)
+
+    return section_num + 1
+
+
+def _build_incidents(doc, report, section_num: int) -> int:
+    """Build incidents (discipline) section (table)."""
+    incidents = report.get("incidents", [])
+    if not incidents:
+        return section_num
+
+    _add_section_heading(doc, section_num, "Incidents (Discipline)")
+
+    headers = ["S.No", "Department", "Type", "Name", "Brief", "Remarks"]
+    table = doc.add_table(rows=1 + len(incidents), cols=6)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    _add_header_row(table, headers)
+
+    for i, inc in enumerate(incidents):
+        row = table.rows[i + 1]
+        values = [
+            str(i + 1), inc.get("dept", "").upper(), inc.get("type", "—"),
+            inc.get("name", "—"), inc.get("brief", "—"), _val(inc.get("remarks")),
+        ]
+        bg = LIGHT_GRAY_HEX if i % 2 == 0 else "FFFFFF"
+        for j, val in enumerate(values):
+            cell = row.cells[j]
+            _set_cell_shading(cell, bg)
+            align = WD_ALIGN_PARAGRAPH.LEFT if j in (4, 5) else WD_ALIGN_PARAGRAPH.CENTER
+            _set_cell_text(cell, val, font_size=9, alignment=align)
+            if j in (4, 5):
+                for run in cell.paragraphs[0].runs:
+                    run.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
+
+    return section_num + 1
+
+
+def _build_library(doc, report, section_num: int) -> int:
+    """Build library transactions & services section (table)."""
     txn = report.get("library_transactions", {})
     svc = report.get("library_services", {})
- 
+
     if not txn and not svc:
-        return [], section_num
- 
-    story = [_spacer(), _section_header(f"{section_num}.  Particulars of Library Services and Transactions", styles), _spacer(0.1)]
- 
+        return section_num
+
+    _add_section_heading(doc, section_num, "Library Services & Transactions")
+
     if txn:
-        story.append(_sub_header("Library Transactions", styles))
-        rows = [
-            ["Particulars", "Count"],
-            ["Books Issued (Check Out)",          _val(txn.get("books_issued"))],
-            ["Books Returned (Check In)",         _val(txn.get("books_returned"))],
-            ["Today's Visitors to LIRC",          _val(txn.get("visitors_lirc"))],
-            ["Evening Users (5 PM – 8 PM)",       _val(txn.get("visitors_evening_5_to_8"))],
-            ["Digital Library Visitors",          _val(txn.get("visitors_digital"))],
-            ["Show & Tell Visitors",              _val(txn.get("show_and_tell_visitors"))],
-            ["CVPC Visitors",                     _val(txn.get("cvpc_visitors"))],
+        _add_sub_heading(doc, "Library Transactions")
+        txn_items = [
+            ("Books Issued (Check Out)", txn.get("books_issued")),
+            ("Books Returned (Check In)", txn.get("books_returned")),
+            ("Today's Visitors to LIRC", txn.get("visitors_lirc")),
+            ("Evening Users (5 PM – 8 PM)", txn.get("visitors_evening_5_to_8")),
+            ("Digital Library Visitors", txn.get("visitors_digital")),
+            ("Show & Tell Visitors", txn.get("show_and_tell_visitors")),
+            ("CVPC Visitors", txn.get("cvpc_visitors")),
         ]
-        rows = [r for r in rows if r[0] == "Particulars" or r[1] != "—"]
-        tbl = Table(rows, colWidths=[10*cm, 3*cm])
-        tbl.setStyle(_header_table_style())
-        story.append(tbl)
- 
+        txn_items = [(k, v) for k, v in txn_items if v is not None]
+        if txn_items:
+            table = doc.add_table(rows=1 + len(txn_items), cols=2)
+            table.alignment = WD_TABLE_ALIGNMENT.CENTER
+            _add_header_row(table, ["Particulars", "Count"])
+            for i, (label, value) in enumerate(txn_items):
+                _add_data_row(table, [label, _val(value)], i + 1)
+
     if svc:
         has_svc = any(v for v in svc.values() if v is not None)
         if has_svc:
-            story.append(_spacer(0.25))
-            story.append(_sub_header("Library Services", styles))
-            rows = [
-                ["Service", "Count"],
-                ["Plagiarism Checks (Turnitin)",  _val(svc.get("plagiarism_checks"))],
-                ["Show & Tell",                  _val(svc.get("show_and_tell"))],
-                ["Patent Searches",              _val(svc.get("patent_searches"))],
-                ["Scopus Indexing Service",      _val(svc.get("scopus_searches"))],
-                ["Grammarly Usage",              _val(svc.get("grammarly_usage"))],
-                ["Duplicate ID Cards Issued",    _val(svc.get("duplicate_id_cards"))],
+            _add_sub_heading(doc, "Library Services")
+            svc_items = [
+                ("Plagiarism Checks (Turnitin)", svc.get("plagiarism_checks")),
+                ("Show & Tell", svc.get("show_and_tell")),
+                ("Patent Searches", svc.get("patent_searches")),
+                ("Scopus Indexing Service", svc.get("scopus_searches")),
+                ("Grammarly Usage", svc.get("grammarly_usage")),
+                ("Duplicate ID Cards Issued", svc.get("duplicate_id_cards")),
             ]
-            rows = [r for r in rows if r[0] == "Service" or r[1] != "—"]
-            tbl = Table(rows, colWidths=[10*cm, 3*cm])
-            tbl.setStyle(_header_table_style())
-            story.append(tbl)
- 
-    return story, section_num + 1
- 
- 
-# ── Header / footer ───────────────────────────────────────────────────────────
- 
-def _make_header_footer(report_date_str, styles):
-    def on_page(canvas, doc):
-        canvas.saveState()
-        w, h = A4
- 
-        # Header bar
-        canvas.setFillColor(DARK_BLUE)
-        canvas.rect(L_MARGIN, h - T_MARGIN - 0.6*cm,
-                    CONTENT_W, 0.6*cm, fill=1, stroke=0)
-        canvas.setFont("Helvetica-Bold", 9)
-        canvas.setFillColor(WHITE)
-        canvas.drawString(L_MARGIN + 0.3*cm, h - T_MARGIN - 0.37*cm,
-                          "VNRVJIET — DAILY REPORT")
-        canvas.drawRightString(w - R_MARGIN - 0.3*cm, h - T_MARGIN - 0.37*cm,
-                               report_date_str)
- 
-        # Footer
-        canvas.setFont("Helvetica", 7)
-        canvas.setFillColor(MID_GRAY)
-        canvas.drawCentredString(w / 2, B_MARGIN - 0.5*cm,
-                                 f"Page {doc.page}  |  Consolidated by AI  |  VNRVJIET Principal's Office")
-        canvas.restoreState()
- 
-    return on_page
- 
- 
+            svc_items = [(k, v) for k, v in svc_items if v is not None]
+            if svc_items:
+                table = doc.add_table(rows=1 + len(svc_items), cols=2)
+                table.alignment = WD_TABLE_ALIGNMENT.CENTER
+                _add_header_row(table, ["Service", "Count"])
+                for i, (label, value) in enumerate(svc_items):
+                    _add_data_row(table, [label, _val(value)], i + 1)
+
+    return section_num + 1
+
+
+def _build_other_matters(doc, report, section_num: int) -> int:
+    """Build other matters section (narrative format)."""
+    others = report.get("other_matters", [])
+    if not others:
+        return section_num
+
+    _add_section_heading(doc, section_num, "Any Other Matters")
+
+    for om in others:
+        dept = om.get("dept", "")
+        desc = om.get("description", "—")
+        _add_body_text(doc, desc, bold_prefix=f"{dept.upper()}: " if dept else None)
+
+    return section_num + 1
+
+
 # ── Main entry point ──────────────────────────────────────────────────────────
- 
-def generate_pdf(report: dict, output_path: str = None) -> bytes:
+
+def generate_docx(report: dict, output_path: str = None,
+                  all_images: list[dict] = None) -> bytes:
     """
-    Generate the formatted daily report PDF from the consolidated JSON.
- 
+    Generate the formatted daily report DOCX from the consolidated JSON.
+
     Args:
-        report:      The full consolidated report dict (the 'report' key from /consolidate response).
-        output_path: Optional file path to write the PDF to.
-                     If None, returns the PDF as bytes.
- 
+        report:      The full consolidated report dict.
+        output_path: Optional file path to write the DOCX to.
+        all_images:  Optional list of image dicts from source department files.
+
     Returns:
-        PDF as bytes (always), and also writes to output_path if provided.
+        DOCX as bytes (always), and also writes to output_path if provided.
     """
-    styles = _styles()
-    buf = io.BytesIO()
- 
+    if all_images is None:
+        all_images = []
+
+    doc = Document()
+
+    # ── Page setup ────────────────────────────────────────────────────────────
+    section = doc.sections[0]
+    section.page_width = Cm(21)    # A4
+    section.page_height = Cm(29.7)
+    section.left_margin = Cm(1.8)
+    section.right_margin = Cm(1.8)
+    section.top_margin = Cm(2.0)
+    section.bottom_margin = Cm(2.0)
+
+    # ── Format date ───────────────────────────────────────────────────────────
     report_date_str = report.get("report_date", "—")
     try:
         dt = datetime.strptime(report_date_str, "%Y-%m-%d")
         formatted_date = dt.strftime("%d %B %Y")
     except Exception:
         formatted_date = report_date_str
- 
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=A4,
-        leftMargin=L_MARGIN, rightMargin=R_MARGIN,
-        topMargin=T_MARGIN + 0.8*cm,   # space for header bar
-        bottomMargin=B_MARGIN + 0.5*cm,
-        title=f"Daily Report — {formatted_date}",
-        author="VNRVJIET Principal's Office",
+
+    # ── Title ─────────────────────────────────────────────────────────────────
+    title = doc.add_paragraph()
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title.paragraph_format.space_after = Pt(2)
+    run = title.add_run("VNR Vignana Jyothi Institute of Engineering & Technology")
+    run.bold = True
+    run.font.size = Pt(14)
+    run.font.color.rgb = DARK_BLUE
+    run.font.name = "Calibri"
+
+    subtitle = doc.add_paragraph()
+    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    subtitle.paragraph_format.space_after = Pt(8)
+    run = subtitle.add_run(f"Daily Report  |  {formatted_date}")
+    run.font.size = Pt(11)
+    run.font.color.rgb = RGBColor(0x44, 0x44, 0x44)
+    run.font.name = "Calibri"
+
+    # Horizontal rule
+    hr = doc.add_paragraph()
+    hr.paragraph_format.space_before = Pt(0)
+    hr.paragraph_format.space_after = Pt(8)
+    pPr = hr._p.get_or_add_pPr()
+    pBdr = parse_xml(
+        f'<w:pBdr {nsdecls("w")}>'
+        f'<w:bottom w:val="single" w:sz="12" w:space="1" w:color="{DARK_BLUE_HEX}"/>'
+        f'</w:pBdr>'
     )
- 
-    story = []
- 
-    # ── Cover title ───────────────────────────────────────────────────────────
-    story.append(_spacer(0.4))
-    story.append(Paragraph("VNR Vignana Jyothi Institute of Engineering & Technology",
-                            styles["ReportTitle"]))
-    story.append(Paragraph(f"Daily Report &nbsp;|&nbsp; {formatted_date}",
-                            styles["ReportSub"]))
-    story.append(_hr())
-    story.append(_spacer(0.2))
- 
-    # ── Section 1: Attendance ─────────────────────────────────────────────────
-    story.extend(_build_attendance(report, styles))
- 
-    # ── Section 2: MTP ───────────────────────────────────────────────────────
-    story.extend(_build_mtp(report, styles))
- 
-    # ── Sections 3+: HOD blocks ───────────────────────────────────────────────
-    hod_story, next_num = _build_hod_sections(report, styles, start_num=3)
-    story.extend(hod_story)
- 
-    # ── Participation ─────────────────────────────────────────────────────────
-    part_story, next_num = _build_participation(report, styles, next_num)
-    story.extend(part_story)
- 
-    # ── Library ───────────────────────────────────────────────────────────────
-    lib_story, _ = _build_library(report, styles, next_num)
-    story.extend(lib_story)
- 
-    story.append(_spacer(1))
- 
-    # ── Build ─────────────────────────────────────────────────────────────────
-    on_page = _make_header_footer(formatted_date, styles)
-    doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
- 
-    pdf_bytes = buf.getvalue()
- 
+    pPr.append(pBdr)
+
+    # ── Build sections ────────────────────────────────────────────────────────
+    num = 1
+    num = _build_attendance(doc, report, num)
+    num = _build_infrastructure(doc, report, num)
+    num = _build_events(doc, report, num, all_images)
+    num = _build_participation(doc, report, num, all_images)
+    num = _build_staff_changes(doc, report, num)
+    num = _build_classwork_adjustments(doc, report, num)
+    num = _build_incidents(doc, report, num)
+    num = _build_library(doc, report, num)
+    num = _build_other_matters(doc, report, num)
+
+    # ── Footer note ───────────────────────────────────────────────────────────
+    doc.add_paragraph()  # spacing
+    footer = doc.add_paragraph()
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = footer.add_run("Consolidated by AI  |  VNRVJIET Principal's Office")
+    run.font.size = Pt(8)
+    run.font.color.rgb = RGBColor(0x99, 0x99, 0x99)
+    run.font.name = "Calibri"
+    run.italic = True
+
+    # ── Save ──────────────────────────────────────────────────────────────────
+    buf = io.BytesIO()
+    doc.save(buf)
+    docx_bytes = buf.getvalue()
+
     if output_path:
         with open(output_path, "wb") as f:
-            f.write(pdf_bytes)
- 
-    return pdf_bytes
+            f.write(docx_bytes)
+
+    return docx_bytes

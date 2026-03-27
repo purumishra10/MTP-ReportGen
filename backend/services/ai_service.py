@@ -1,42 +1,67 @@
 import json
 import os
-from groq import Groq
+import re
+from google import genai
+import json_repair
 
-client = Groq(api_key=os.environ["GROQ_API_KEY"])
-MODEL = "llama-3.3-70b-versatile"
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+MODEL = "gemini-3-flash-preview"
 
-SYSTEM_PROMPT = """You are a report consolidation assistant for the principal's office of VNRVJIET.
+SYSTEM_PROMPT = """You are a report consolidation assistant for the Principal's office of VNRVJIET (VNR Vignana Jyothi Institute of Engineering & Technology).
 You receive daily reports from all departments and produce one concise consolidated JSON report.
- 
+
 STRICT RULES — no exceptions:
 - Every fact in your output must come directly from the input. Do not infer, guess, or add anything.
 - Do not include individual student or staff names in attendance counts — use numbers only.
 - Return ONLY valid JSON matching the output schema below. No explanation, no preamble, no markdown fences.
- 
+
+FIELD EXTRACTION GUIDELINES:
+- Attendance data is in a table labeled "Staff Attendance". Extract: on_rolls, absent, present. Calculate percentage = round((present / on_rolls) * 100, 1).
+- Infrastructure issues are in "Infrastructure Issues or Maintenance". KEEP only pending ones (where Completed On / Status is blank or "pending").
+- Events are in "Events / Seminars / Workshops". Extract event name, date/duration, participant counts (internal vs external), resource person name.
+- Staff participation at external events is in "Participation by Staff".
+- Student participation at external events is in "Particiption by Students" (note the typo in source data).
+- Staff changes (joined/left) are in "Staff Joined or Left".
+- Classwork adjustments are in "Classword Adjustments / Lecture Interchange" — just count per department.
+- Incidents are in "Incidents (Discipline)".
+- Library data has its own sections: "Library Services and Transactions" and the plagiarism/patent services section.
+- "Any Other Matter" captures miscellaneous items.
+
 COMPRESSION RULES — apply before writing each section:
- 
+
 KEEP as-is:
-  - Infrastructure issues where status is pending (completed_on is blank)
+  - Infrastructure issues where status is pending
   - Any incident (discipline of staff or student)
   - Any staff joined or left entry
   - Events that had external participants (Others > 0)
-  - Staff or student participation at external events
- 
+  - Staff or student participation at external events (national/international conferences, competitions, workshops, etc.)
+
 COMPRESS to numbers / one line:
   - Attendance: one row per dept → {dept, on_rolls, absent, present, percentage}
     percentage = round((present / on_rolls) * 100, 1) — if on_rolls is 0 or missing, use null
   - Classwork adjustments: just total count per dept, not individual rows
-  - Events with only internal participants: event name + internal participant count only
-  - Library transactions: preserve exact numbers from the particulars table
- 
+  - Library transactions: preserve exact numbers from the source
+
 DROP entirely (do not mention in output):
-  - Any section that is completely empty
+  - Any section that is completely empty or has only "nil", "none", "no", "-", "N/A" entries
   - Remarks that are "nil", "none", "no issues", "-", or equivalent
   - Resolved infrastructure issues (completed_on is filled)
   - Duplicate information that appears across multiple departments
- 
+
+EVENTS SECTION — IMPORTANT:
+  - For each event, write a concise 1-2 sentence "summary" describing what happened, who participated, and why it matters.
+  - Rate each event's "importance" as "high", "medium", or "low":
+    * HIGH: External events, events with resource persons from industry/academia, events with >50 participants, competitive events, national/international events
+    * MEDIUM: Internal workshops with 20-50 participants, department-level seminars
+    * LOW: Routine internal sessions with <20 participants
+  - Combine multiple small internal events from the same department into one entry if they are similar.
+
+PARTICIPATION SECTION — IMPORTANT:
+  - For each participation entry, write a concise 1 sentence "summary" describing the contribution and achievement.
+  - Include any notable achievements (awards, certifications, publications).
+
 OUTPUT SCHEMA — return exactly this structure, omitting any key whose section has no data:
- 
+
 {
   "report_date": "YYYY-MM-DD",
   "attendance": {
@@ -52,7 +77,7 @@ OUTPUT SCHEMA — return exactly this structure, omitting any key whose section 
       "dept": "string",
       "description": "string",
       "reported_on": "string",
-      "status": "pending | resolved",
+      "status": "pending",
       "remarks": "string | null"
     }
   ],
@@ -60,6 +85,9 @@ OUTPUT SCHEMA — return exactly this structure, omitting any key whose section 
     {
       "dept": "string",
       "name": "string",
+      "summary": "string (1-2 sentence narrative describing the event, participants, and significance)",
+      "importance": "high | medium | low",
+      "date": "string",
       "duration": "string",
       "participants_internal": int | null,
       "participants_external": int | null,
@@ -67,10 +95,10 @@ OUTPUT SCHEMA — return exactly this structure, omitting any key whose section 
     }
   ],
   "staff_participation": [
-    {"name": "string", "dept": "string", "event": "string", "status": "string", "date": "string"}
+    {"name": "string", "dept": "string", "event": "string", "role": "string", "date": "string", "venue": "string | null", "summary": "string (1 sentence describing the contribution/achievement)"}
   ],
   "student_participation": [
-    {"name": "string", "dept": "string", "event": "string", "status": "string", "date": "string"}
+    {"name": "string", "dept": "string", "event": "string", "achievement": "string", "date": "string", "summary": "string (1 sentence describing the contribution/achievement)"}
   ],
   "staff_changes": [
     {
@@ -81,9 +109,13 @@ OUTPUT SCHEMA — return exactly this structure, omitting any key whose section 
       "date": "string"
     }
   ],
+  "classwork_adjustments": [
+    {"dept": "string", "count": int}
+  ],
   "incidents": [
     {
       "dept": "string",
+      "type": "staff | student",
       "name": "string",
       "id": "string | null",
       "brief": "string",
@@ -111,31 +143,41 @@ OUTPUT SCHEMA — return exactly this structure, omitting any key whose section 
     {"dept": "string", "description": "string"}
   ]
 }
- 
+
 For any numeric field where the source value is missing, blank, or unclear — use null. Never guess a number."""
- 
- 
+
+
 VERIFY_SYSTEM_PROMPT = """You are a fact-checker for an AI-generated report.
 Compare the consolidated JSON output against the original source department data.
 Find any number, name, or date in the JSON that cannot be traced to the source data.
- 
+
 Return ONLY a JSON array. Empty array [] if no issues found.
 Each issue must be: {"field": "path.to.field", "value": "the suspicious value", "issue": "brief reason"}
- 
+
 Do not flag paraphrasing or style — only flag facts that contradict or are absent from the source."""
 
-# 1. Consolidation
+
 def consolidate(report_date: str, dept_reports: list[dict]) -> dict:
     """
+    Consolidate department reports into a single structured JSON.
+
+    Args:
+        report_date: Date string in YYYY-MM-DD format
         dept_reports: list of {dept_name: str, dept_code: str, text: str}
-        Returns parsed JSON dict of consolidated report.
+
+    Returns:
+        Parsed JSON dict of consolidated report.
     """
     user_message = _build_user_message(report_date, dept_reports)
     raw = _llm_call(SYSTEM_PROMPT, user_message)
     return _parse_json(raw, context="consolidation")
 
-# 2. Fact Verification
+
 def verify_facts(consolidated: dict, dept_reports: list[dict]) -> list[dict]:
+    """
+    Verify consolidated report against source data.
+    Returns list of issues found (empty list if clean).
+    """
     source_text = "\n\n".join(
         f"=== {r['dept_name']} ===\n{r['text']}"
         for r in dept_reports
@@ -149,43 +191,56 @@ CONSOLIDATED JSON:
     raw = _llm_call(VERIFY_SYSTEM_PROMPT, user_message)
     issues = _parse_json(raw, context="verification")
 
-    if issues:
+    if isinstance(issues, list) and issues:
         consolidated["_fact_issues"] = issues
 
     return issues
 
-# Shared Helpers
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
 def _build_user_message(report_date: str, dept_reports: list[dict]) -> str:
     sections = "\n\n".join(
         f"=== DEPARTMENT: {r['dept_name']} (code: {r['dept_code']}) ===\n{r['text']}"
         for r in dept_reports
     )
-
     return f"Consolidate the following department reports for {report_date}.\n\n{sections}"
 
-def _llm_call(system: str, user: str) -> str:
-    response = client.chat.completions.create(
-        model=MODEL,
-        temperature=0,
-        max_tokens=4096,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
-    )
-    return response.choices[0].message.content
 
-def _parse_json(raw: str ,context: str) -> dict | list:
+def _llm_call(system: str, user: str) -> str:
+    """Call Gemini API and return the text response."""
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=user,
+        config=genai.types.GenerateContentConfig(
+            system_instruction=system,
+            temperature=0,
+            max_output_tokens=8192,
+        ),
+    )
+    return response.text
+
+
+def _parse_json(raw: str, context: str) -> dict | list:
+    """Parse JSON from LLM response reliably, stripping markdown and fixing trailing commas."""
     cleaned = raw.strip()
-    
+
+    # Strip markdown code fences
     if cleaned.startswith("```"):
         cleaned = cleaned.split("\n", 1)[-1]
         if cleaned.endswith("```"):
             cleaned = cleaned.rsplit("```", 1)[0]
 
+    # Strip any potential prefix/suffix text that isn't JSON
+    if "```json" in cleaned:
+        cleaned = cleaned.split("```json")[1].split("```")[0].strip()
+
     try:
-        return json.loads(cleaned.strip())
-    except json.JSONDecodeError as e:
+        parsed = json_repair.loads(cleaned)
+        if not parsed:
+            raise ValueError("Parsed JSON is empty")
+        return parsed
+    except Exception as e:
         raise ValueError(
             f"LLM returned invalid JSON during {context}.\n"
             f"Error: {e}\n"
