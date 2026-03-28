@@ -5,7 +5,7 @@ from google import genai
 import json_repair
 
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL = "gemini-3-flash-preview"
+MODEL = "gemini-2.5-flash"
 
 SYSTEM_PROMPT = """You are a report consolidation assistant for the Principal's office of VNRVJIET (VNR Vignana Jyothi Institute of Engineering & Technology).
 You receive daily reports from all departments and produce one concise consolidated JSON report.
