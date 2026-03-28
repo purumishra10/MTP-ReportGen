@@ -17,7 +17,8 @@ STRICT RULES — no exceptions:
 - Return ONLY valid JSON matching the output schema below. No explanation, no preamble, no markdown fences.
 
 FIELD EXTRACTION GUIDELINES:
-- Attendance data is in a table labeled "Staff Attendance". Extract: on_rolls, absent, present. Calculate percentage = round((present / on_rolls) * 100, 1).
+- Attendance data is in a table labeled "Staff Attendance". Extract: on_rolls, absent, present, teaching_count, non_teaching_count. Calculate percentage = round((present / on_rolls) * 100, 1).
+- Use the verbatim department name from the "Dept." column in the Staff Attendance table header. For example, if it says "CSE- (AIML & IoT), R&AI", use that exact string in the "dept" field.
 - Infrastructure issues are in "Infrastructure Issues or Maintenance". KEEP only pending ones (where Completed On / Status is blank or "pending").
 - Events are in "Events / Seminars / Workshops". Extract event name, date/duration, participant counts (internal vs external), resource person name.
 - Staff participation at external events is in "Participation by Staff".
@@ -39,7 +40,7 @@ KEEP as-is:
   - Staff or student participation at external events (national/international conferences, competitions, workshops, etc.)
 
 COMPRESS to numbers / one line:
-  - Attendance: one row per dept → {dept, on_rolls, absent, present, percentage}
+  - Attendance: one row per dept → {dept, teaching_count, non_teaching_count, on_rolls, absent, present, percentage}
     percentage = round((present / on_rolls) * 100, 1) — if on_rolls is 0 or missing, use null
   - Classwork adjustments: just total count per dept, not individual rows
   - Library transactions: preserve exact numbers from the source
@@ -76,7 +77,7 @@ OUTPUT SCHEMA — return exactly this structure, omitting any key whose section 
   "report_date": "YYYY-MM-DD",
   "attendance": {
     "departments": [
-      {"dept": "string", "on_rolls": int, "absent": int, "present": int, "percentage": float | null}
+      {"dept": "string", "teaching_count": int | null, "non_teaching_count": int | null, "on_rolls": int, "absent": int, "present": int, "percentage": float | null}
     ],
     "library": {
       "on_rolls": int, "absent_with_leave": int, "absent_without_leave": int, "present": int

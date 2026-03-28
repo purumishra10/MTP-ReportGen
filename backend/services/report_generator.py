@@ -205,32 +205,41 @@ def _build_attendance(doc, report, section_num: int) -> int:
 
     _add_section_heading(doc, section_num, "Staff Attendance Report (Department-wise)")
 
-    headers = ["S.No", "Department", "On Rolls", "Absent", "Present", "Attendance %"]
-    table = doc.add_table(rows=1 + len(depts) + 1, cols=6)
+    headers = ["S.No", "Department", "Teaching", "Non-Teaching", "On Rolls", "Absent", "Present", "Attendance %"]
+    table = doc.add_table(rows=1 + len(depts) + 1, cols=8)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = True
     _add_header_row(table, headers)
 
-    total_rolls = total_absent = total_present = 0
+    total_teach = total_non_teach = total_rolls = total_absent = total_present = 0
     for i, d in enumerate(depts):
+        t_count = d.get("teaching_count", 0) or 0
+        nt_count = d.get("non_teaching_count", 0) or 0
         on_rolls = d.get("on_rolls", 0) or 0
         absent = d.get("absent", 0) or 0
         present = d.get("present", 0) or 0
         pct = _pct(d.get("percentage"))
+        
+        total_teach += t_count
+        total_non_teach += nt_count
         total_rolls += on_rolls
         total_absent += absent
         total_present += present
+        
         _add_data_row(table, [
-            str(i + 1), d.get("dept", "").upper(),
-            _val(d.get("on_rolls")), _val(d.get("absent")),
-            _val(d.get("present")), pct,
+            str(i + 1), d.get("dept", ""),
+            _val(t_count), _val(nt_count),
+            _val(on_rolls), _val(absent),
+            _val(present), pct,
         ], i + 1)
 
     # Totals row
     total_pct = round(total_present / total_rolls * 100, 1) if total_rolls else 0
     total_row = table.rows[-1]
-    for i, val in enumerate(["", "TOTAL", str(total_rolls), str(total_absent),
-                              str(total_present), _pct(total_pct)]):
+    totals_vals = ["", "TOTAL", str(total_teach), str(total_non_teach), 
+                   str(total_rolls), str(total_absent), str(total_present), _pct(total_pct)]
+    
+    for i, val in enumerate(totals_vals):
         cell = total_row.cells[i]
         _set_cell_shading(cell, MID_BLUE_HEX)
         _set_cell_text(cell, val, bold=True, font_size=9,
