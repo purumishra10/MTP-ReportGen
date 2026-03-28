@@ -1,7 +1,7 @@
 """
 DOCX Report Generator
 Generates a consolidated daily report in .docx format matching the VNRVJIET template.
-Events and participation are rendered as narrative paragraphs with embedded images.
+Events and other matters are grouped by department with inline images.
 """
 
 import io
@@ -102,6 +102,27 @@ def _add_sub_heading(doc, title: str):
     run.font.name = "Calibri"
 
 
+def _add_dept_heading(doc, dept_name: str):
+    """Add a department name heading (bold, slightly larger, with accent bar)."""
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(8)
+    p.paragraph_format.space_after = Pt(3)
+    p.paragraph_format.left_indent = Cm(0.2)
+
+    # Accent bar
+    run = p.add_run("▎ ")
+    run.font.size = Pt(10)
+    run.font.color.rgb = ACCENT_GREEN
+    run.font.name = "Calibri"
+
+    # Department name
+    run = p.add_run(dept_name.upper())
+    run.bold = True
+    run.font.size = Pt(10)
+    run.font.color.rgb = DARK_BLUE
+    run.font.name = "Calibri"
+
+
 def _add_body_text(doc, text: str, bold_prefix: str = None):
     """Add a body paragraph with optional bold prefix."""
     p = doc.add_paragraph()
@@ -138,24 +159,26 @@ def _add_importance_badge(paragraph, importance: str):
     run.font.name = "Calibri"
 
 
-def _insert_images_for_dept(doc, dept_code: str, all_images: list[dict], max_images: int = 2):
-    """Insert images from a department into the document."""
+def _insert_dept_images(doc, dept_code: str, all_images: list[dict], max_images: int = 3):
+    """Insert event-related images for a specific department inline."""
     dept_images = [img for img in all_images if img["dept_code"] == dept_code]
     if not dept_images:
-        return
+        return 0
 
-    # Limit images per department
+    inserted = 0
     for img in dept_images[:max_images]:
         try:
             img_stream = io.BytesIO(img["image_bytes"])
             doc.add_picture(img_stream, width=Inches(3.5))
-            # Center the image
-            last_paragraph = doc.paragraphs[-1]
-            last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            last_paragraph.paragraph_format.space_before = Pt(4)
-            last_paragraph.paragraph_format.space_after = Pt(4)
+            last_p = doc.paragraphs[-1]
+            last_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            last_p.paragraph_format.space_before = Pt(4)
+            last_p.paragraph_format.space_after = Pt(4)
+            inserted += 1
         except Exception as e:
             print(f"[WARNING] Failed to insert image {img['filename']}: {e}")
+
+    return inserted
 
 
 def _val(v):
@@ -213,7 +236,7 @@ def _build_attendance(doc, report, section_num: int) -> int:
         _set_cell_text(cell, val, bold=True, font_size=9,
                        color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
-    # Library attendance
+    # Library attendance (shown here for completeness, but library details come last)
     lib = report.get("attendance", {}).get("library")
     if lib:
         _add_sub_heading(doc, "Library Staff Attendance")
@@ -260,123 +283,135 @@ def _build_infrastructure(doc, report, section_num: int) -> int:
     return section_num + 1
 
 
-def _build_events(doc, report, section_num: int, all_images: list[dict]) -> int:
-    """Build events/seminars/workshops in NARRATIVE format with images."""
-    events = report.get("events", [])
-    if not events:
+def _build_department_highlights(doc, report, section_num: int, all_images: list[dict]) -> int:
+    """
+    Build events + other matters grouped by DEPARTMENT with inline images.
+
+    Each department with noteworthy content gets:
+    - A bold department heading
+    - Events listed as bullet points with importance badges
+    - Other matters listed below
+    - Relevant images inserted inline
+    """
+    highlights = report.get("department_highlights", [])
+
+    # Fallback: if AI returned old-style flat "events" list, convert it
+    if not highlights and report.get("events"):
+        highlights = _convert_flat_events_to_highlights(report)
+
+    if not highlights:
         return section_num
 
-    # Sort by importance: high first, then medium, then low
-    importance_order = {"high": 0, "medium": 1, "low": 2}
-    events_sorted = sorted(events, key=lambda e: importance_order.get(
-        (e.get("importance") or "low").lower(), 3))
+    _add_section_heading(doc, section_num, "Department Highlights — Events & Activities")
 
-    _add_section_heading(doc, section_num, "Events / Seminars / Workshops")
+    for dept_block in highlights:
+        dept_name = dept_block.get("dept", "Unknown Department")
+        dept_code = dept_block.get("dept_code", "").lower()
+        events = dept_block.get("events", [])
+        other_matters = dept_block.get("other_matters", [])
 
-    for ev in events_sorted:
-        dept = ev.get("dept", "Unknown")
-        name = ev.get("name", "Untitled Event")
-        summary = ev.get("summary", "")
-        importance = ev.get("importance", "medium")
-        date_str = ev.get("date", "")
-        duration = ev.get("duration", "")
-        internal = ev.get("participants_internal")
-        external = ev.get("participants_external")
-        resource_person = ev.get("resource_person")
+        # Skip departments with nothing to show
+        if not events and not other_matters:
+            continue
 
-        # Event title with department
-        p = doc.add_paragraph()
-        p.paragraph_format.space_before = Pt(6)
-        p.paragraph_format.space_after = Pt(2)
-        p.paragraph_format.left_indent = Cm(0.3)
+        # Department heading
+        _add_dept_heading(doc, dept_name)
 
-        # Bold event name
-        run = p.add_run(f"● {name}")
-        run.bold = True
-        run.font.size = Pt(10)
-        run.font.color.rgb = MID_BLUE
-        run.font.name = "Calibri"
+        # Events
+        for ev in events:
+            name = ev.get("name", "Untitled Event")
+            summary = ev.get("summary", "")
+            importance = ev.get("importance", "medium")
+            date_str = ev.get("date", "")
+            duration = ev.get("duration", "")
+            internal = ev.get("participants_internal")
+            external = ev.get("participants_external")
+            resource_person = ev.get("resource_person")
 
-        # Department tag
-        run = p.add_run(f"  — {dept}")
-        run.font.size = Pt(9)
-        run.font.color.rgb = BODY_GRAY
-        run.font.name = "Calibri"
-        run.italic = True
+            # Event title with importance badge
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(4)
+            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.left_indent = Cm(0.5)
 
-        # Importance badge
-        _add_importance_badge(p, importance)
-
-        # Meta info line (date, participants, resource person)
-        meta_parts = []
-        if date_str:
-            meta_parts.append(f"Date: {date_str}")
-        if duration:
-            meta_parts.append(f"Duration: {duration}")
-        if internal is not None:
-            meta_parts.append(f"Internal: {internal}")
-        if external is not None:
-            meta_parts.append(f"External: {external}")
-        if resource_person:
-            meta_parts.append(f"Resource Person: {resource_person}")
-
-        if meta_parts:
-            meta_p = doc.add_paragraph()
-            meta_p.paragraph_format.space_before = Pt(0)
-            meta_p.paragraph_format.space_after = Pt(2)
-            meta_p.paragraph_format.left_indent = Cm(0.8)
-            run = meta_p.add_run("  ".join(meta_parts))
-            run.font.size = Pt(8)
-            run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+            run = p.add_run(f"● {name}")
+            run.bold = True
+            run.font.size = Pt(9)
+            run.font.color.rgb = MID_BLUE
             run.font.name = "Calibri"
-            run.italic = True
 
-        # Summary narrative
-        if summary:
-            _add_body_text(doc, summary)
+            _add_importance_badge(p, importance)
 
-    # Insert ALL department images as a photo gallery at the end of events
-    if all_images:
-        _add_sub_heading(doc, "Photos from Department Activities")
-        inserted_count = 0
-        # Group by department and insert up to 2 per department
-        seen_depts = set()
-        for img in all_images:
-            dept_code = img["dept_code"]
-            if dept_code in seen_depts:
-                continue
-            # Get up to 2 images for this dept
-            dept_imgs = [im for im in all_images if im["dept_code"] == dept_code][:2]
-            for di in dept_imgs:
-                try:
-                    img_stream = io.BytesIO(di["image_bytes"])
-                    doc.add_picture(img_stream, width=Inches(3.5))
-                    last_p = doc.paragraphs[-1]
-                    last_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    last_p.paragraph_format.space_before = Pt(4)
-                    last_p.paragraph_format.space_after = Pt(2)
-                    # Caption
-                    cap = doc.add_paragraph()
-                    cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    cap.paragraph_format.space_after = Pt(6)
-                    run = cap.add_run(f"— {dept_code.upper()} Department —")
-                    run.font.size = Pt(8)
-                    run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
-                    run.font.name = "Calibri"
-                    run.italic = True
-                    inserted_count += 1
-                except Exception as e:
-                    print(f"[WARNING] Failed to insert image {di['filename']}: {e}")
-            seen_depts.add(dept_code)
+            # Meta line (date, participants, resource person)
+            meta_parts: list[str] = []
+            if date_str:
+                meta_parts.append(f"Date: {date_str}")
+            if duration:
+                meta_parts.append(f"Duration: {duration}")
+            if internal is not None:
+                meta_parts.append(f"Internal: {internal}")
+            if external is not None:
+                meta_parts.append(f"External: {external}")
+            if resource_person:
+                meta_parts.append(f"Resource Person: {resource_person}")
 
-        if inserted_count > 0:
-            print(f"[INFO] Inserted {inserted_count} images into report")
+            if meta_parts:
+                meta_p = doc.add_paragraph()
+                meta_p.paragraph_format.space_before = Pt(0)
+                meta_p.paragraph_format.space_after = Pt(2)
+                meta_p.paragraph_format.left_indent = Cm(1.0)
+                run = meta_p.add_run("  ".join(meta_parts))
+                run.font.size = Pt(8)
+                run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+                run.font.name = "Calibri"
+                run.italic = True
+
+            # Summary narrative
+            if summary:
+                _add_body_text(doc, summary)
+
+        # Other matters for this department
+        if other_matters:
+            for matter in other_matters:
+                if isinstance(matter, str) and matter.strip():
+                    _add_body_text(doc, matter, bold_prefix="• Other: ")
+                elif isinstance(matter, dict):
+                    desc = matter.get("description", "")
+                    if desc.strip():
+                        _add_body_text(doc, desc, bold_prefix="• Other: ")
+
+        # Insert images inline for this department
+        img_count = _insert_dept_images(doc, dept_code, all_images, max_images=3)
+        if img_count > 0:
+            print(f"[INFO] Inserted {img_count} image(s) for {dept_code.upper()}")
 
     return section_num + 1
 
 
-def _build_participation(doc, report, section_num: int, all_images: list[dict]) -> int:
-    """Build staff & student participation in NARRATIVE format."""
+def _convert_flat_events_to_highlights(report: dict) -> list[dict]:
+    """Convert old-style flat events list to department-grouped highlights."""
+    events = report.get("events", [])
+    other_matters = report.get("other_matters", [])
+
+    dept_map: dict[str, dict] = {}
+
+    for ev in events:
+        dept = ev.get("dept", "Unknown")
+        if dept not in dept_map:
+            dept_map[dept] = {"dept": dept, "dept_code": dept.lower(), "events": [], "other_matters": []}
+        dept_map[dept]["events"].append(ev)
+
+    for om in other_matters:
+        dept = om.get("dept", "General")
+        if dept not in dept_map:
+            dept_map[dept] = {"dept": dept, "dept_code": dept.lower(), "events": [], "other_matters": []}
+        dept_map[dept]["other_matters"].append(om.get("description", str(om)))
+
+    return list(dept_map.values())
+
+
+def _build_participation(doc, report, section_num: int) -> int:
+    """Build staff & student participation in narrative format."""
     staff_p = report.get("staff_participation", [])
     student_p = report.get("student_participation", [])
 
@@ -395,7 +430,6 @@ def _build_participation(doc, report, section_num: int, all_images: list[dict]) 
             date_str = s.get("date", "")
             summary = s.get("summary", "")
 
-            # Bullet point with key info
             p = doc.add_paragraph()
             p.paragraph_format.space_before = Pt(2)
             p.paragraph_format.space_after = Pt(2)
@@ -407,7 +441,7 @@ def _build_participation(doc, report, section_num: int, all_images: list[dict]) 
             run.font.color.rgb = DARK_BLUE
             run.font.name = "Calibri"
 
-            detail_parts = []
+            detail_parts: list[str] = []
             if dept:
                 detail_parts.append(dept)
             if role:
@@ -447,7 +481,7 @@ def _build_participation(doc, report, section_num: int, all_images: list[dict]) 
             run.font.color.rgb = DARK_BLUE
             run.font.name = "Calibri"
 
-            detail_parts = []
+            detail_parts: list[str] = []
             if dept:
                 detail_parts.append(dept)
             if event:
@@ -538,14 +572,14 @@ def _build_incidents(doc, report, section_num: int) -> int:
             align = WD_ALIGN_PARAGRAPH.LEFT if j in (4, 5) else WD_ALIGN_PARAGRAPH.CENTER
             _set_cell_text(cell, val, font_size=9, alignment=align)
             if j in (4, 5):
-                for run in cell.paragraphs[0].runs:
-                    run.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
+                for cell_run in cell.paragraphs[0].runs:
+                    cell_run.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
 
     return section_num + 1
 
 
 def _build_library(doc, report, section_num: int) -> int:
-    """Build library transactions & services section (table)."""
+    """Build library transactions & services section (table). Always last."""
     txn = report.get("library_transactions", {})
     svc = report.get("library_services", {})
 
@@ -592,22 +626,6 @@ def _build_library(doc, report, section_num: int) -> int:
                 _add_header_row(table, ["Service", "Count"])
                 for i, (label, value) in enumerate(svc_items):
                     _add_data_row(table, [label, _val(value)], i + 1)
-
-    return section_num + 1
-
-
-def _build_other_matters(doc, report, section_num: int) -> int:
-    """Build other matters section (narrative format)."""
-    others = report.get("other_matters", [])
-    if not others:
-        return section_num
-
-    _add_section_heading(doc, section_num, "Any Other Matters")
-
-    for om in others:
-        dept = om.get("dept", "")
-        desc = om.get("description", "—")
-        _add_body_text(doc, desc, bold_prefix=f"{dept.upper()}: " if dept else None)
 
     return section_num + 1
 
@@ -680,16 +698,17 @@ def generate_docx(report: dict, output_path: str = None,
     pPr.append(pBdr)
 
     # ── Build sections ────────────────────────────────────────────────────────
+    # Order: Attendance → Infrastructure → Dept Highlights → Participation →
+    #        Staff Changes → Classwork → Incidents → Library (ALWAYS LAST)
     num = 1
     num = _build_attendance(doc, report, num)
     num = _build_infrastructure(doc, report, num)
-    num = _build_events(doc, report, num, all_images)
-    num = _build_participation(doc, report, num, all_images)
+    num = _build_department_highlights(doc, report, num, all_images)
+    num = _build_participation(doc, report, num)
     num = _build_staff_changes(doc, report, num)
     num = _build_classwork_adjustments(doc, report, num)
     num = _build_incidents(doc, report, num)
-    num = _build_library(doc, report, num)
-    num = _build_other_matters(doc, report, num)
+    num = _build_library(doc, report, num)  # ALWAYS LAST
 
     # ── Footer note ───────────────────────────────────────────────────────────
     doc.add_paragraph()  # spacing

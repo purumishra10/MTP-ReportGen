@@ -48,10 +48,14 @@ def truncate(text: str, max_chars: int = 15000) -> str:
 
 def extract_images(file_bytes: bytes, filename: str, dept_code: str) -> list[dict]:
     """
-    Extract all embedded images from a .docx file.
+    Extract event-related images from a .docx file.
+
+    Filters out:
+    - The first image in every file (always the college logo/header)
+    - Vector formats (EMF/WMF)
+    - Very small images (< 5 KB — icons, bullets, decorations)
 
     Returns list of dicts: {dept_code, filename, image_bytes, content_type}
-    Handles corrupted images gracefully.
     """
     ext = os.path.splitext(filename)[1].lower()
     if ext != ".docx":
@@ -60,13 +64,27 @@ def extract_images(file_bytes: bytes, filename: str, dept_code: str) -> list[dic
     images = []
     try:
         zf = zipfile.ZipFile(io.BytesIO(file_bytes))
-        media_files = [n for n in zf.namelist() if n.startswith("word/media/")]
+        media_files = sorted(
+            [n for n in zf.namelist() if n.startswith("word/media/")]
+        )
 
-        for media_path in media_files:
+        for idx, media_path in enumerate(media_files):
+            # Skip the FIRST image — it is always the college logo/header
+            if idx == 0:
+                continue
+
             try:
                 img_bytes = zf.read(media_path)
                 img_name = os.path.basename(media_path)
                 ext_lower = os.path.splitext(img_name)[1].lower()
+
+                # Skip vector formats (not real photos)
+                if ext_lower in (".emf", ".wmf"):
+                    continue
+
+                # Skip small images (< 5 KB — icons, bullets, template decorations)
+                if len(img_bytes) < 5120:
+                    continue
 
                 content_type_map = {
                     ".png": "image/png",
@@ -75,14 +93,8 @@ def extract_images(file_bytes: bytes, filename: str, dept_code: str) -> list[dic
                     ".gif": "image/gif",
                     ".bmp": "image/bmp",
                     ".tiff": "image/tiff",
-                    ".emf": "image/x-emf",
-                    ".wmf": "image/x-wmf",
                 }
                 content_type = content_type_map.get(ext_lower, "image/png")
-
-                # Skip very small images (likely icons/bullets) and vector formats
-                if len(img_bytes) < 1024 or ext_lower in (".emf", ".wmf"):
-                    continue
 
                 images.append({
                     "dept_code": dept_code,

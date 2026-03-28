@@ -12,6 +12,7 @@ You receive daily reports from all departments and produce one concise consolida
 
 STRICT RULES — no exceptions:
 - Every fact in your output must come directly from the input. Do not infer, guess, or add anything.
+- Preserve key terms, names, and numbers accurately without losing their meaning, but keep summaries concise and professional.
 - Do not include individual student or staff names in attendance counts — use numbers only.
 - Return ONLY valid JSON matching the output schema below. No explanation, no preamble, no markdown fences.
 
@@ -25,7 +26,8 @@ FIELD EXTRACTION GUIDELINES:
 - Classwork adjustments are in "Classword Adjustments / Lecture Interchange" — just count per department.
 - Incidents are in "Incidents (Discipline)".
 - Library data has its own sections: "Library Services and Transactions" and the plagiarism/patent services section.
-- "Any Other Matter" captures miscellaneous items.
+- "Any Other Matter" captures miscellaneous items — these MUST be grouped under their source department.
+- Check free text paragraphs at the bottom of each file for events or participation data missing from tables.
 
 COMPRESSION RULES — apply before writing each section:
 
@@ -48,16 +50,24 @@ DROP entirely (do not mention in output):
   - Resolved infrastructure issues (completed_on is filled)
   - Duplicate information that appears across multiple departments
 
-EVENTS SECTION — IMPORTANT:
-  - For each event, write a concise 1-2 sentence "summary" describing what happened, who participated, and why it matters.
+DEPARTMENT HIGHLIGHTS — CRITICAL SECTION:
+  - Group ALL events AND other matters BY DEPARTMENT.
+  - Each department entry should have:
+    * "dept": the full department name (use exact name from source report)
+    * "dept_code": the short code (cse, ece, etc.)
+    * "events": list of events from that department
+    * "other_matters": list of other noteworthy items from that department
+  - ONLY include a department if it has at least ONE event with importance "high" or "medium", OR a noteworthy "other matter".
+  - For each event, write a concise 1-2 sentence "summary" using EXACT WORDS from the source report as much as possible.
   - Rate each event's "importance" as "high", "medium", or "low":
     * HIGH: External events, events with resource persons from industry/academia, events with >50 participants, competitive events, national/international events
     * MEDIUM: Internal workshops with 20-50 participants, department-level seminars
     * LOW: Routine internal sessions with <20 participants
   - Combine multiple small internal events from the same department into one entry if they are similar.
+  - For each "other_matters" item, preserve the exact description from the source report.
 
 PARTICIPATION SECTION — IMPORTANT:
-  - For each participation entry, write a concise 1 sentence "summary" describing the contribution and achievement.
+  - For each participation entry, write a concise 1 sentence "summary" using EXACT WORDS from the source report.
   - Include any notable achievements (awards, certifications, publications).
 
 OUTPUT SCHEMA — return exactly this structure, omitting any key whose section has no data:
@@ -81,24 +91,30 @@ OUTPUT SCHEMA — return exactly this structure, omitting any key whose section 
       "remarks": "string | null"
     }
   ],
-  "events": [
+  "department_highlights": [
     {
-      "dept": "string",
-      "name": "string",
-      "summary": "string (1-2 sentence narrative describing the event, participants, and significance)",
-      "importance": "high | medium | low",
-      "date": "string",
-      "duration": "string",
-      "participants_internal": int | null,
-      "participants_external": int | null,
-      "resource_person": "string | null"
+      "dept": "string (full department name from source)",
+      "dept_code": "string (short code: cse, ece, etc.)",
+      "events": [
+        {
+          "name": "string (exact name from source report)",
+          "summary": "string (1-2 sentence description using source wording)",
+          "importance": "high | medium | low",
+          "date": "string",
+          "duration": "string",
+          "participants_internal": int | null,
+          "participants_external": int | null,
+          "resource_person": "string | null"
+        }
+      ],
+      "other_matters": ["string (exact description from source)"]
     }
   ],
   "staff_participation": [
-    {"name": "string", "dept": "string", "event": "string", "role": "string", "date": "string", "venue": "string | null", "summary": "string (1 sentence describing the contribution/achievement)"}
+    {"name": "string", "dept": "string", "event": "string", "role": "string", "date": "string", "venue": "string | null", "summary": "string (1 sentence using source wording)"}
   ],
   "student_participation": [
-    {"name": "string", "dept": "string", "event": "string", "achievement": "string", "date": "string", "summary": "string (1 sentence describing the contribution/achievement)"}
+    {"name": "string", "dept": "string", "event": "string", "achievement": "string", "date": "string", "summary": "string (1 sentence using source wording)"}
   ],
   "staff_changes": [
     {
@@ -138,10 +154,7 @@ OUTPUT SCHEMA — return exactly this structure, omitting any key whose section 
     "scopus_searches": int | null,
     "grammarly_usage": int | null,
     "duplicate_id_cards": int | null
-  },
-  "other_matters": [
-    {"dept": "string", "description": "string"}
-  ]
+  }
 }
 
 For any numeric field where the source value is missing, blank, or unclear — use null. Never guess a number."""
@@ -160,17 +173,65 @@ Do not flag paraphrasing or style — only flag facts that contradict or are abs
 def consolidate(report_date: str, dept_reports: list[dict]) -> dict:
     """
     Consolidate department reports into a single structured JSON.
-
-    Args:
-        report_date: Date string in YYYY-MM-DD format
-        dept_reports: list of {dept_name: str, dept_code: str, text: str}
-
-    Returns:
-        Parsed JSON dict of consolidated report.
+    Uses chunking to avoid LLM output truncation on large inputs.
     """
-    user_message = _build_user_message(report_date, dept_reports)
-    raw = _llm_call(SYSTEM_PROMPT, user_message)
-    return _parse_json(raw, context="consolidation")
+    final_report = {
+        "report_date": report_date,
+        "attendance": {"departments": [], "library": None},
+        "department_highlights": [],
+        "staff_participation": [],
+        "student_participation": [],
+        "staff_changes": [],
+        "classwork_adjustments": [],
+        "incidents": [],
+        "infrastructure_issues": [],
+        "library_transactions": {},
+        "library_services": {},
+    }
+
+    chunk_size = 5
+    for i in range(0, len(dept_reports), chunk_size):
+        chunk = dept_reports[i:i + chunk_size]
+        user_message = _build_user_message(report_date, chunk)
+        try:
+            raw = _llm_call(SYSTEM_PROMPT, user_message)
+            parsed = _parse_json(raw, context=f"consolidation chunk {i}")
+            
+            if not isinstance(parsed, dict):
+                continue
+                
+            # Merge lists
+            list_keys = [
+                "department_highlights", "staff_participation",
+                "student_participation", "staff_changes",
+                "classwork_adjustments", "incidents", "infrastructure_issues"
+            ]
+            for key in list_keys:
+                if key in parsed and isinstance(parsed[key], list):
+                    final_report[key].extend(parsed[key])
+                    
+            # Merge attendance
+            if "attendance" in parsed and isinstance(parsed["attendance"], dict):
+                att = parsed["attendance"]
+                if "departments" in att and isinstance(att["departments"], list):
+                    final_report["attendance"]["departments"].extend(att["departments"])
+                if "library" in att and att["library"]:
+                    if any(v is not None for v in att["library"].values()):
+                        final_report["attendance"]["library"] = att["library"]
+                        
+            # Merge library sections
+            if "library_transactions" in parsed and isinstance(parsed["library_transactions"], dict):
+                if any(v is not None for v in parsed["library_transactions"].values()):
+                    final_report["library_transactions"].update(parsed["library_transactions"])
+                    
+            if "library_services" in parsed and isinstance(parsed["library_services"], dict):
+                if any(v is not None for v in parsed["library_services"].values()):
+                    final_report["library_services"].update(parsed["library_services"])
+                    
+        except Exception as e:
+            print(f"[WARNING] Skipping failed chunk processing {i}: {e}")
+
+    return final_report
 
 
 def verify_facts(consolidated: dict, dept_reports: list[dict]) -> list[dict]:

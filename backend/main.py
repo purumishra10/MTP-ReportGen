@@ -159,6 +159,22 @@ async def consolidate_reports(
             },
         )
 
+    # Deduplicate template images: any image hash appearing in 3+ files is a logo/template
+    if all_images:
+        import hashlib
+        from collections import Counter
+        hash_counts = Counter()
+        for img in all_images:
+            img["_hash"] = hashlib.md5(img["image_bytes"]).hexdigest()
+            hash_counts[img["_hash"]] += 1
+        template_hashes = {h for h, c in hash_counts.items() if c >= 3}
+        before = len(all_images)
+        all_images = [img for img in all_images if img["_hash"] not in template_hashes]
+        filtered = before - len(all_images)
+        if filtered:
+            print(f"[INFO] Filtered {filtered} template/logo images (hash dedup)")
+
+
     # AI consolidation
     try:
         consolidated = consolidate(report_date, dept_reports)
