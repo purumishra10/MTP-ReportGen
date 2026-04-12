@@ -1,0 +1,25 @@
+{
+    "departments": [
+        "Library"
+    ],
+    "format": [
+        {
+            "section_title": "Staff Attendance:",
+            "columns": [
+                "On Roll",
+                "Absent with Leave",
+                "Absent Without Leave",
+                "Present",
+                "Remarks"
+            ]
+        },
+        {
+            "section_title": "Library Services or Transactions:",
+            "columns": [
+                "S. no.",
+                "Particulars",
+                "No\u2019s"
+            ]
+        }
+    ]
+}
