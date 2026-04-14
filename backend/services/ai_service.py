@@ -269,18 +269,35 @@ def _build_user_message(report_date: str, dept_reports: list[dict]) -> str:
     return f"Consolidate the following department reports for {report_date}.\n\n{sections}"
 
 
-def _llm_call(system: str, user: str) -> str:
-    """Call Gemini API and return the text response."""
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=user,
-        config=genai.types.GenerateContentConfig(
-            system_instruction=system,
-            temperature=0,
-            max_output_tokens=8192,
-        ),
-    )
-    return response.text
+def _llm_call(system: str, user: str, max_retries: int = 4) -> str:
+    """Call Gemini API and return the text response.
+    Retries with exponential backoff on transient 503/429 errors."""
+    import time
+
+    for attempt in range(max_retries + 1):
+        try:
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=user,
+                config=genai.types.GenerateContentConfig(
+                    system_instruction=system,
+                    temperature=0,
+                    max_output_tokens=8192,
+                ),
+            )
+            return response.text
+        except Exception as e:
+            err_str = str(e)
+            is_retryable = ("503" in err_str or "UNAVAILABLE" in err_str
+                            or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str)
+
+            if is_retryable and attempt < max_retries:
+                wait = 20 * (attempt + 1)  # 20s, 40s, 60s, 80s
+                print(f"[RETRY] Attempt {attempt + 1}/{max_retries} failed "
+                      f"({err_str[:80]}...). Waiting {wait}s before retry.")
+                time.sleep(wait)
+            else:
+                raise
 
 
 def _parse_json(raw: str, context: str) -> dict | list:

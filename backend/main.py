@@ -10,6 +10,7 @@ from typing import Annotated
 
 from backend.services.normalizer import normalize, truncate, extract_images
 from backend.services.ai_service import consolidate, verify_facts
+from backend.services.post_processor import post_process
 from backend.services.report_generator import generate_docx
 from backend.services import supabase_client
 
@@ -196,11 +197,16 @@ async def consolidate_reports(
         issues = []
         consolidated["_fact_issues"] = []
 
+    # Post-process: deduplicate, normalize, clean
+    consolidated = post_process(consolidated)
+
     # Generate DOCX
     try:
         output_dir = "generated_reports"
         os.makedirs(output_dir, exist_ok=True)
-        filename = f"daily_report_{report_date}.docx"
+        from datetime import datetime as _dt
+        _ts = _dt.now().strftime("%H%M%S")
+        filename = f"daily_report_{report_date}_{_ts}.docx"
         output_path = os.path.join(output_dir, filename)
         docx_bytes = generate_docx(consolidated, output_path=output_path,
                                     all_images=all_images)

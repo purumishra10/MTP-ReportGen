@@ -375,19 +375,19 @@ def _build_department_highlights(doc, report, section_num: int, all_images: list
                 run.font.name = "Calibri"
                 run.italic = True
 
-            # Summary narrative
-            if summary:
+            # Summary narrative — only if non-redundant and non-empty
+            if summary and summary.strip():
                 _add_body_text(doc, summary)
 
-        # Other matters for this department
+        # Other matters for this department (no "Other:" prefix)
         if other_matters:
             for matter in other_matters:
                 if isinstance(matter, str) and matter.strip():
-                    _add_body_text(doc, matter, bold_prefix="• Other: ")
+                    _add_body_text(doc, matter, bold_prefix="• ")
                 elif isinstance(matter, dict):
                     desc = matter.get("description", "")
                     if desc.strip():
-                        _add_body_text(doc, desc, bold_prefix="• Other: ")
+                        _add_body_text(doc, desc, bold_prefix="• ")
 
         # Insert images inline for this department
         img_count = _insert_dept_images(doc, dept_code, all_images, max_images=3)
@@ -420,7 +420,8 @@ def _convert_flat_events_to_highlights(report: dict) -> list[dict]:
 
 
 def _build_participation(doc, report, section_num: int) -> int:
-    """Build staff & student participation in narrative format."""
+    """Build staff & student participation in narrative format.
+    Supports grouped participants (multiple people at the same event)."""
     staff_p = report.get("staff_participation", [])
     student_p = report.get("student_participation", [])
 
@@ -432,84 +433,119 @@ def _build_participation(doc, report, section_num: int) -> int:
     if staff_p:
         _add_sub_heading(doc, "Staff Participation")
         for s in staff_p:
-            name = s.get("name", "")
-            dept = s.get("dept", "")
-            event = s.get("event", "")
-            role = s.get("role", s.get("status", ""))
-            date_str = s.get("date", "")
-            summary = s.get("summary", "")
-
-            p = doc.add_paragraph()
-            p.paragraph_format.space_before = Pt(2)
-            p.paragraph_format.space_after = Pt(2)
-            p.paragraph_format.left_indent = Cm(0.5)
-
-            run = p.add_run(f"● {name}")
-            run.bold = True
-            run.font.size = Pt(9)
-            run.font.color.rgb = DARK_BLUE
-            run.font.name = "Calibri"
-
-            detail_parts: list[str] = []
-            if dept:
-                detail_parts.append(dept)
-            if role:
-                detail_parts.append(role)
-            if event:
-                detail_parts.append(f'at "{event}"')
-            if date_str:
-                detail_parts.append(f"({date_str})")
-
-            if detail_parts:
-                run = p.add_run(f"  — {', '.join(detail_parts)}")
-                run.font.size = Pt(9)
-                run.font.color.rgb = BODY_GRAY
-                run.font.name = "Calibri"
-
-            if summary:
-                _add_body_text(doc, summary)
+            grouped = s.get("_grouped_participants")
+            if grouped:
+                # Grouped entry: show event once, list participants below
+                _render_grouped_participation(doc, s, grouped, kind="staff")
+            else:
+                # Single participant entry
+                _render_single_participation(doc, s, kind="staff")
 
     if student_p:
         _add_sub_heading(doc, "Student Participation")
         for s in student_p:
-            name = s.get("name", "")
-            dept = s.get("dept", "")
-            event = s.get("event", "")
-            achievement = s.get("achievement", s.get("status", ""))
-            date_str = s.get("date", "")
-            summary = s.get("summary", "")
-
-            p = doc.add_paragraph()
-            p.paragraph_format.space_before = Pt(2)
-            p.paragraph_format.space_after = Pt(2)
-            p.paragraph_format.left_indent = Cm(0.5)
-
-            run = p.add_run(f"● {name}")
-            run.bold = True
-            run.font.size = Pt(9)
-            run.font.color.rgb = DARK_BLUE
-            run.font.name = "Calibri"
-
-            detail_parts: list[str] = []
-            if dept:
-                detail_parts.append(dept)
-            if event:
-                detail_parts.append(f'at "{event}"')
-            if achievement:
-                detail_parts.append(f"— {achievement}")
-            if date_str:
-                detail_parts.append(f"({date_str})")
-
-            if detail_parts:
-                run = p.add_run(f"  — {', '.join(detail_parts)}")
-                run.font.size = Pt(9)
-                run.font.color.rgb = BODY_GRAY
-                run.font.name = "Calibri"
-
-            if summary:
-                _add_body_text(doc, summary)
+            grouped = s.get("_grouped_participants")
+            if grouped:
+                _render_grouped_participation(doc, s, grouped, kind="student")
+            else:
+                _render_single_participation(doc, s, kind="student")
 
     return section_num + 1
+
+
+def _render_single_participation(doc, entry: dict, kind: str = "staff"):
+    """Render a single participant entry."""
+    name = entry.get("name", "")
+    dept = entry.get("dept", "")
+    event = entry.get("event", "")
+    date_str = entry.get("date", "")
+    summary = entry.get("summary", "")
+
+    if kind == "staff":
+        role = entry.get("role", entry.get("status", ""))
+    else:
+        role = entry.get("achievement", entry.get("status", ""))
+
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(2)
+    p.paragraph_format.space_after = Pt(2)
+    p.paragraph_format.left_indent = Cm(0.5)
+
+    run = p.add_run(f"● {name}")
+    run.bold = True
+    run.font.size = Pt(9)
+    run.font.color.rgb = DARK_BLUE
+    run.font.name = "Calibri"
+
+    detail_parts: list[str] = []
+    if dept:
+        detail_parts.append(dept)
+    if role:
+        if kind == "student":
+            detail_parts.append(f"— {role}")
+        else:
+            detail_parts.append(role)
+    if event:
+        detail_parts.append(f'at "{event}"')
+    if date_str:
+        detail_parts.append(f"({date_str})")
+
+    if detail_parts:
+        run = p.add_run(f"  — {', '.join(detail_parts)}")
+        run.font.size = Pt(9)
+        run.font.color.rgb = BODY_GRAY
+        run.font.name = "Calibri"
+
+    if summary and summary.strip():
+        _add_body_text(doc, summary)
+
+
+def _render_grouped_participation(doc, entry: dict, participants: list[dict],
+                                   kind: str = "staff"):
+    """Render a grouped participation entry: one event heading with participant list."""
+    event = entry.get("event", "")
+    date_str = entry.get("date", "")
+
+    # Event heading
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(4)
+    p.paragraph_format.space_after = Pt(2)
+    p.paragraph_format.left_indent = Cm(0.5)
+
+    run = p.add_run(f"● {event}")
+    run.bold = True
+    run.font.size = Pt(9)
+    run.font.color.rgb = MID_BLUE
+    run.font.name = "Calibri"
+
+    if date_str:
+        run = p.add_run(f"  ({date_str})")
+        run.font.size = Pt(8)
+        run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+        run.font.name = "Calibri"
+        run.italic = True
+
+    # Participants list
+    for participant in participants:
+        pname = participant.get("name", "")
+        pdept = participant.get("dept", "")
+        prole = participant.get("role", "") or participant.get("achievement", "")
+
+        p = doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(1)
+        p.paragraph_format.space_after = Pt(1)
+        p.paragraph_format.left_indent = Cm(1.0)
+
+        parts = [pname]
+        if pdept:
+            parts.append(f"({pdept})")
+        if prole:
+            parts.append(f"— {prole}")
+
+        run = p.add_run(f"- {' '.join(parts)}")
+        run.font.size = Pt(9)
+        run.font.color.rgb = BODY_GRAY
+        run.font.name = "Calibri"
 
 
 def _build_staff_changes(doc, report, section_num: int) -> int:
