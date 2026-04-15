@@ -1,76 +1,116 @@
-const dropArea = document.getElementById('drop-area');
-const fileInput = document.getElementById('files');
-const fileList = document.getElementById('file-list');
 const form = document.getElementById('generator-form');
 const submitBtn = document.getElementById('submit-btn');
 const loading = document.getElementById('loading');
-const errorMsg = document.getElementById('error-msg');
-const successMsg = document.getElementById('success-msg');
+const dateInput = document.getElementById('date');
 
 const monthlyBtn = document.getElementById('monthly-btn');
 const monthlyLoading = document.getElementById('monthly-loading');
 const historyList = document.getElementById('history-list');
 
-let selectedFiles = [];
+// Tracker Elements
+const trackerGrid = document.querySelector('.grid.grid-cols-2.lg\\:grid-cols-4.gap-4'); // The Bento grid
+
+// Modal Elements
+const reviewModal = document.getElementById('review-modal');
+const modalDept = document.getElementById('modal-dept');
+const modalDate = document.getElementById('modal-date');
+const modalContentArea = document.getElementById('modal-content-area');
+let currentReviewId = null;
 
 // Initialize
-document.getElementById('date').valueAsDate = new Date();
+dateInput.valueAsDate = new Date();
 fetchHistory();
+fetchTrackerData();
 
-// Handle Drag and Drop
-['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-    dropArea.addEventListener(eventName, preventDefaults, false);
-});
+dateInput.addEventListener('change', fetchTrackerData);
 
-function preventDefaults(e) {
-    e.preventDefault();
-    e.stopPropagation();
+// Fetch Status from API and Render Grid
+async function fetchTrackerData() {
+    if (!trackerGrid) return;
+    
+    const dateVal = dateInput.value;
+    try {
+        const res = await fetch(`/api/tracker/${dateVal}`);
+        const data = await res.json();
+        
+        let html = '';
+        if (data.records && data.records.length > 0) {
+            data.records.forEach(r => {
+                let statusChip = '';
+                let reviewBtn = '';
+                
+                if (r.status === 'draft') {
+                    statusChip = `<div class="bg-surface-container text-on-surface-variant px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-on-surface-variant/50"></span>Draft</div>`;
+                } else if (r.status === 'pending_review') {
+                    statusChip = `<div class="bg-[#fffbeb] text-[#b45309] border border-[#fde68a] px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-[#f59e0b] animate-pulse"></span>Pending</div>`;
+                    reviewBtn = `<button onclick="openReviewModal(${r.id}, '${r.department}', \`${r.content.replace(/`/g, '\\`')}\`)" class="mt-4 w-full py-2 bg-on-surface text-surface rounded-md text-xs font-bold hover:bg-primary transition-colors">Review Submission</button>`;
+                } else if (r.status === 'approved') {
+                    statusChip = `<div class="bg-[#d1f4e0] text-[#0a4d2e] border border-[#85f8c4] px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-[#10b981]"></span>Approved</div>`;
+                }
+
+                html += `
+                <div class="bg-surface-container-lowest p-5 rounded-2xl border ${r.status==='pending_review' ? 'border-[#fde68a]' : 'border-outline-variant'} shadow-sm flex flex-col justify-between group transition-shadow hover:shadow-md">
+                    <div>
+                        <div class="flex justify-between items-start mb-3">
+                            <h4 class="font-headline font-bold text-primary">${r.department}</h4>
+                            ${statusChip}
+                        </div>
+                        <p class="text-xs text-on-surface-variant line-clamp-2">${r.content}</p>
+                    </div>
+                    ${reviewBtn}
+                </div>
+                `;
+            });
+        } else {
+            html = `<div class="col-span-full py-12 text-center text-sm font-medium text-on-surface-variant">No submissions found for this date.</div>`;
+        }
+        
+        trackerGrid.innerHTML = html;
+        
+    } catch (e) {
+        console.error(e);
+        trackerGrid.innerHTML = `<div class="col-span-full py-12 text-center text-sm text-error">Failed to load tracker data.</div>`;
+    }
 }
 
-['dragenter', 'dragover'].forEach(eventName => {
-    dropArea.addEventListener(eventName, () => dropArea.classList.add('drag-over'), false);
-});
+// Modal Functions
+window.openReviewModal = function(id, dept, content) {
+    currentReviewId = id;
+    modalDept.innerText = dept;
+    modalDate.innerText = dateInput.value;
+    modalContentArea.innerHTML = content.replace(/\\n/g, '<br/>'); // basic line break mapping
+    
+    reviewModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden'; 
+};
 
-['dragleave', 'drop'].forEach(eventName => {
-    dropArea.addEventListener(eventName, () => dropArea.classList.remove('drag-over'), false);
-});
+window.closeReviewModal = function() {
+    currentReviewId = null;
+    reviewModal.classList.add('hidden');
+    document.body.style.overflow = '';
+};
 
-dropArea.addEventListener('drop', handleDrop, false);
-
-function handleDrop(e) {
-    const dt = e.dataTransfer;
-    const files = dt.files;
-    handleFiles(files);
+window.submitReviewAction = async function(status) {
+    if (!currentReviewId) return;
+    
+    try {
+        const res = await fetch('/api/tracker/review', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({id: currentReviewId, status: status})
+        });
+        if (res.ok) {
+            closeReviewModal();
+            fetchTrackerData(); // refresh grid
+        } else {
+            alert('Failed to update status');
+        }
+    } catch(e) {
+        alert('Network error during review');
+    }
 }
 
-fileInput.addEventListener('change', function() {
-    handleFiles(this.files);
-});
-
-function handleFiles(files) {
-    const newFiles = Array.from(files).filter(f => f.name.endsWith('.docx'));
-    selectedFiles = [...selectedFiles, ...newFiles];
-    updateFileList();
-}
-
-function updateFileList() {
-    fileList.innerHTML = '';
-    selectedFiles.forEach((file, index) => {
-        const li = document.createElement('li');
-        li.innerHTML = `
-            <span>${file.name}</span>
-            <span style="color: #c92a2a; cursor: pointer;" onclick="removeFile(${index})">✕</span>
-        `;
-        fileList.appendChild(li);
-    });
-}
-
-function removeFile(index) {
-    selectedFiles.splice(index, 1);
-    updateFileList();
-}
-
-// Fetch History
+// Fetch History Sidebar
 async function fetchHistory() {
     try {
         const res = await fetch('/api/history');
@@ -79,57 +119,49 @@ async function fetchHistory() {
         historyList.innerHTML = '';
         if (data.dates && data.dates.length > 0) {
             data.dates.forEach(date => {
-                const li = document.createElement('li');
-                li.style.display = 'flex';
-                li.style.justifyContent = 'space-between';
-                li.style.alignItems = 'center';
+                const li = document.createElement('div');
+                li.className = "bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/30 flex justify-between items-center group transition-colors hover:border-primary/30 cursor-pointer";
+                li.onclick = () => { dateInput.value = date; fetchTrackerData(); };
                 li.innerHTML = `
-                    <span>${date}</span>
-                    <span style="color: #c92a2a; cursor: pointer; font-weight: bold; font-size: 1.1em;" title="Delete Record" onclick="deleteRecord('${date}')">✕</span>
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-secondary-container flex items-center justify-center shrink-0">
+                            <span class="material-symbols-outlined text-on-secondary-container text-[16px]">calendar_today</span>
+                        </div>
+                        <span class="text-xs font-bold text-on-surface">${date}</span>
+                    </div>
+                    <button type="button" title="Delete Record" onclick="event.stopPropagation(); deleteRecord('${date}')" class="p-1.5 text-outline hover:text-error hover:bg-error-container rounded-md transition-colors opacity-0 group-hover:opacity-100 flex items-center justify-center">
+                        <span class="material-symbols-outlined text-[18px]">delete</span>
+                    </button>
                 `;
                 historyList.appendChild(li);
             });
-        } else {
-            historyList.innerHTML = '<li>No records found.</li>';
         }
     } catch (e) {
-        historyList.innerHTML = '<li>Error loading history.</li>';
+        historyList.innerHTML = '<div class="text-xs text-error text-center p-4">Error loading history.</div>';
     }
 }
 
-// Generate Daily
+// Generate Daily from Database
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    errorMsg.classList.add('hidden');
-    successMsg.classList.add('hidden');
-    
-    if (selectedFiles.length === 0) {
-        showError("Please upload at least one .docx report.");
-        return;
-    }
-
     submitBtn.classList.add('hidden');
     loading.classList.remove('hidden');
 
-    const formData = new FormData();
-    formData.append('date', document.getElementById('date').value);
-
-    selectedFiles.forEach(file => {
-        formData.append('files', file);
-    });
+    const payload = { date: dateInput.value };
 
     try {
         const response = await fetch('/api/generate', {
             method: 'POST',
-            body: formData
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
 
-        await handleDownloadResponse(response, `Master_Daily_Report_${document.getElementById('date').value}.docx`);
-        fetchHistory(); // refresh db list
+        await handleDownloadResponse(response, `Master_Daily_Report_${payload.date}.docx`);
+        fetchHistory(); 
 
     } catch (error) {
-        showError(error.message);
+        alert(error.message);
     } finally {
         submitBtn.classList.remove('hidden');
         loading.classList.add('hidden');
@@ -138,8 +170,6 @@ form.addEventListener('submit', async (e) => {
 
 // Generate Monthly
 monthlyBtn.addEventListener('click', async () => {
-    errorMsg.classList.add('hidden');
-    successMsg.classList.add('hidden');
     monthlyBtn.classList.add('hidden');
     monthlyLoading.classList.remove('hidden');
     
@@ -147,7 +177,7 @@ monthlyBtn.addEventListener('click', async () => {
         const response = await fetch('/api/monthly', { method: 'POST' });
         await handleDownloadResponse(response, `MTP_Monthly_Report.docx`);
     } catch (error) {
-        showError(error.message);
+        alert(error.message);
     } finally {
         monthlyBtn.classList.remove('hidden');
         monthlyLoading.classList.add('hidden');
@@ -166,27 +196,11 @@ async function handleDownloadResponse(response, defaultFilename) {
     a.style.display = 'none';
     a.href = url;
     
-    const disposition = response.headers.get('Content-Disposition');
-    let filename = defaultFilename;
-    if (disposition && disposition.indexOf('attachment') !== -1) {
-        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-        const matches = filenameRegex.exec(disposition);
-        if (matches != null && matches[1]) {
-            filename = matches[1].replace(/['"]/g, '');
-        }
-    }
-    
-    a.download = filename;
+    a.download = defaultFilename;
     document.body.appendChild(a);
     a.click();
     
     window.URL.revokeObjectURL(url);
-    successMsg.classList.remove('hidden');
-}
-
-function showError(msg) {
-    errorMsg.textContent = msg;
-    errorMsg.classList.remove('hidden');
 }
 
 async function deleteRecord(date) {
@@ -194,15 +208,11 @@ async function deleteRecord(date) {
         const res = await fetch(`/api/history/${date}`, { method: 'DELETE' });
         if (res.ok) {
             fetchHistory();
-        } else {
-            const data = await res.json();
-            showError(data.error || 'Failed to delete record');
+            fetchTrackerData();
         }
     } catch (e) {
-        showError('Network error while deleting record');
+        alert('Network error while deleting record');
     }
 }
 
-// Make accessible globally for inline onclick
-window.removeFile = removeFile;
 window.deleteRecord = deleteRecord;

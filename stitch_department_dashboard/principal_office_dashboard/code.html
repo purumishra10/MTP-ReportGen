@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Principal's Office Dashboard | VNRVJIET</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-tertiary-fixed": "#002114",
+                        "on-primary-container": "#86a0cd",
+                        "error": "#ba1a1a",
+                        "secondary-fixed-dim": "#bcc7dd",
+                        "on-surface": "#181c1e",
+                        "background": "#f7fafc",
+                        "secondary-container": "#d5e0f7",
+                        "secondary": "#545f72",
+                        "on-tertiary-container": "#39b282",
+                        "surface-bright": "#f7fafc",
+                        "on-error-container": "#93000a",
+                        "tertiary": "#002618",
+                        "surface-variant": "#e0e3e5",
+                        "on-primary-fixed": "#001b3c",
+                        "on-error": "#ffffff",
+                        "surface-container-highest": "#e0e3e5",
+                        "tertiary-fixed-dim": "#68dba9",
+                        "outline": "#74777f",
+                        "primary-container": "#1a365d",
+                        "surface-container-low": "#f1f4f6",
+                        "primary-fixed-dim": "#adc7f7",
+                        "on-tertiary-fixed-variant": "#005137",
+                        "secondary-fixed": "#d8e3fa",
+                        "primary": "#002045",
+                        "surface-container": "#ebeef0",
+                        "on-background": "#181c1e",
+                        "inverse-primary": "#adc7f7",
+                        "tertiary-container": "#003e29",
+                        "surface-container-lowest": "#ffffff",
+                        "surface": "#f7fafc",
+                        "on-primary": "#ffffff",
+                        "primary-fixed": "#d6e3ff",
+                        "on-secondary": "#ffffff",
+                        "tertiary-fixed": "#85f8c4",
+                        "on-primary-fixed-variant": "#2d476f",
+                        "on-surface-variant": "#43474e",
+                        "inverse-on-surface": "#eef1f3",
+                        "on-secondary-fixed-variant": "#3c475a",
+                        "on-secondary-fixed": "#111c2c",
+                        "surface-container-high": "#e5e9eb",
+                        "error-container": "#ffdad6",
+                        "surface-tint": "#455f88",
+                        "on-secondary-container": "#586377",
+                        "inverse-surface": "#2d3133",
+                        "outline-variant": "#c4c6cf",
+                        "on-tertiary": "#ffffff",
+                        "surface-dim": "#d7dadc"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .academic-gradient {
+            background: linear-gradient(135deg, #002045 0%, #1a365d 100%);
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-background font-body text-on-surface">
+<!-- TopNavBar -->
+<header class="bg-white dark:bg-slate-900 flex justify-between items-center w-full px-8 h-20 fixed top-0 z-50">
+<div class="flex items-center space-x-6">
+<div class="flex items-center space-x-3">
+<div class="w-10 h-10 academic-gradient rounded-lg flex items-center justify-center text-white font-bold text-xl">V</div>
+<span class="text-[#002045] dark:text-blue-100 font-bold text-xl font-headline tracking-wide uppercase">College Logo</span>
+</div>
+<div class="h-8 w-px bg-surface-container-high"></div>
+<div class="flex flex-col">
+<span class="text-xs font-label uppercase tracking-widest text-on-surface-variant">Academic Session</span>
+<span class="text-sm font-semibold text-primary">2025-2026</span>
+</div>
+</div>
+<div class="flex items-center space-x-6">
+<div class="text-right hidden md:block">
+<div class="text-sm font-bold text-primary font-headline">October 24, 2025 | 10:45 AM</div>
+<div class="inline-flex items-center px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container text-[10px] font-bold uppercase tracking-tighter mt-1">
+                    Principal Office
+                </div>
+</div>
+<div class="flex items-center space-x-3">
+<button class="p-2 text-slate-500 hover:bg-[#e5e9eb] transition-colors rounded-md">
+<span class="material-symbols-outlined" data-icon="schedule">schedule</span>
+</button>
+<button class="bg-primary text-white px-5 py-2 rounded-md text-sm font-bold academic-gradient hover:opacity-90 transition-all active:scale-[0.98]">
+                    Logout
+                </button>
+</div>
+</div>
+</header>
+<div class="flex pt-20">
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-screen flex flex-col py-6 px-4 bg-[#f1f4f6] dark:bg-slate-950 w-64 z-40 mt-20">
+<div class="px-4 mb-8">
+<h2 class="font-headline font-extrabold text-[#002045] dark:text-blue-100 text-lg">Principal's Office</h2>
+<p class="text-xs text-slate-600 dark:text-slate-400 font-medium">VNRVJIET Administration</p>
+</div>
+<nav class="flex-1 space-y-2">
+<!-- Dashboard Active -->
+<a class="flex items-center space-x-3 px-4 py-3 bg-[#d5e0f7] dark:bg-blue-900/30 text-[#586377] dark:text-blue-100 border-l-4 border-[#002045] font-['Inter'] text-sm font-medium transition-transform active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-[#e5e9eb] dark:hover:bg-slate-800 rounded-md font-['Inter'] text-sm font-medium transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span>Consolidation</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-[#e5e9eb] dark:hover:bg-slate-800 rounded-md font-['Inter'] text-sm font-medium transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="assessment">assessment</span>
+<span>Reports</span>
+</a>
+<a class="flex items-center space-x-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-[#e5e9eb] dark:hover:bg-slate-800 rounded-md font-['Inter'] text-sm font-medium transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span>Settings</span>
+</a>
+</nav>
+<div class="mt-auto px-4 py-4 bg-surface-container-high rounded-xl mb-24">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-xs text-white font-bold">JD</div>
+<div class="flex flex-col overflow-hidden">
+<span class="text-xs font-bold truncate">Dr. C.D. Naidu</span>
+<span class="text-[10px] text-on-surface-variant truncate">Principal, VNRVJIET</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 flex-1 p-10 min-h-screen">
+<!-- Section Header -->
+<div class="mb-12">
+<h1 class="font-headline text-4xl font-extrabold text-on-surface tracking-tight mb-2">Institutional Dashboard</h1>
+<p class="text-on-surface-variant max-w-2xl font-body">Real-time tracking of departmental submissions and consolidated academic reporting for the Principal's oversight.</p>
+</div>
+<div class="grid grid-cols-12 gap-8">
+<!-- Department Tracker (Bento Grid Style) -->
+<section class="col-span-12 lg:col-span-8 space-y-6">
+<div class="flex justify-between items-end mb-4">
+<h3 class="font-headline text-xl font-bold text-primary">Department Submission Tracker</h3>
+<span class="text-xs font-label uppercase tracking-widest text-on-surface-variant">13 Departments Total</span>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+<!-- Card: CSE (Submitted) -->
+<div class="bg-surface-container-lowest p-5 rounded-xl transition-all hover:bg-surface-container-high group">
+<div class="flex justify-between items-start mb-4">
+<h4 class="font-headline font-bold text-lg">CSE</h4>
+<span class="bg-tertiary-container text-on-tertiary-container px-2 py-1 rounded text-[10px] font-bold uppercase">Submitted</span>
+</div>
+<div class="text-[11px] text-on-surface-variant font-medium mb-4">Received: Oct 23, 14:20</div>
+<button class="w-full py-2 text-xs font-bold text-primary border border-outline-variant rounded hover:bg-white transition-colors">
+                                View Report
+                            </button>
+</div>
+<!-- Card: ECE (Pending) -->
+<div class="bg-surface-container-lowest p-5 rounded-xl transition-all hover:bg-surface-container-high group">
+<div class="flex justify-between items-start mb-4">
+<h4 class="font-headline font-bold text-lg">ECE</h4>
+<span class="bg-error-container text-on-error-container px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight">Pending</span>
+</div>
+<div class="text-[11px] text-on-surface-variant font-medium mb-4">Deadline: Today, 17:00</div>
+<button class="w-full py-2 text-xs font-bold text-on-surface-variant border border-dashed border-outline-variant rounded cursor-not-allowed">
+                                Not Available
+                            </button>
+</div>
+<!-- Card: IT (Submitted) -->
+<div class="bg-surface-container-lowest p-5 rounded-xl transition-all hover:bg-surface-container-high">
+<div class="flex justify-between items-start mb-4">
+<h4 class="font-headline font-bold text-lg">IT</h4>
+<span class="bg-tertiary-container text-on-tertiary-container px-2 py-1 rounded text-[10px] font-bold uppercase">Submitted</span>
+</div>
+<div class="text-[11px] text-on-surface-variant font-medium mb-4">Received: Oct 24, 09:15</div>
+<button class="w-full py-2 text-xs font-bold text-primary border border-outline-variant rounded hover:bg-white transition-colors">
+                                View Report
+                            </button>
+</div>
+<!-- Card: ME -->
+<div class="bg-surface-container-lowest p-5 rounded-xl transition-all hover:bg-surface-container-high">
+<div class="flex justify-between items-start mb-4">
+<h4 class="font-headline font-bold text-lg">ME</h4>
+<span class="bg-error-container text-on-error-container px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight">Pending</span>
+</div>
+<div class="text-[11px] text-on-surface-variant font-medium mb-4">Deadline: Today, 17:00</div>
+<button class="w-full py-2 text-xs font-bold text-on-surface-variant border border-dashed border-outline-variant rounded">
+                                Notify HOD
+                            </button>
+</div>
+<!-- Card: CE -->
+<div class="bg-surface-container-lowest p-5 rounded-xl transition-all hover:bg-surface-container-high">
+<div class="flex justify-between items-start mb-4">
+<h4 class="font-headline font-bold text-lg">CE</h4>
+<span class="bg-tertiary-container text-on-tertiary-container px-2 py-1 rounded text-[10px] font-bold uppercase">Submitted</span>
+</div>
+<div class="text-[11px] text-on-surface-variant font-medium mb-4">Received: Oct 22, 11:00</div>
+<button class="w-full py-2 text-xs font-bold text-primary border border-outline-variant rounded hover:bg-white transition-colors">
+                                View Report
+                            </button>
+</div>
+<!-- Multi-Department Chips Container for CS specialized branches -->
+<div class="col-span-1 bg-surface-container p-4 rounded-xl flex flex-col justify-between">
+<span class="text-[10px] font-bold uppercase text-on-surface-variant tracking-widest mb-2">CS Verticals</span>
+<div class="flex flex-wrap gap-2">
+<span class="px-2 py-1 bg-white text-xs font-bold rounded">CSBS</span>
+<span class="px-2 py-1 bg-white text-xs font-bold rounded opacity-50">CSM</span>
+<span class="px-2 py-1 bg-white text-xs font-bold rounded">CSD</span>
+<span class="px-2 py-1 bg-white text-xs font-bold rounded">CSC</span>
+<span class="px-2 py-1 bg-white text-xs font-bold rounded">CSG</span>
+</div>
+<div class="mt-4 text-[10px] font-medium text-primary">3 of 5 Submitted</div>
+</div>
+<!-- Card: EEE -->
+<div class="bg-surface-container-lowest p-5 rounded-xl transition-all hover:bg-surface-container-high">
+<div class="flex justify-between items-start mb-4">
+<h4 class="font-headline font-bold text-lg">EEE</h4>
+<span class="bg-error-container text-on-error-container px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight">Pending</span>
+</div>
+<div class="text-[11px] text-on-surface-variant font-medium mb-4">Pending Approval</div>
+<button class="w-full py-2 text-xs font-bold text-on-surface-variant border border-dashed border-outline-variant rounded cursor-not-allowed">
+                                Not Available
+                            </button>
+</div>
+<!-- Card: EIE -->
+<div class="bg-surface-container-lowest p-5 rounded-xl transition-all hover:bg-surface-container-high">
+<div class="flex justify-between items-start mb-4">
+<h4 class="font-headline font-bold text-lg">EIE</h4>
+<span class="bg-tertiary-container text-on-tertiary-container px-2 py-1 rounded text-[10px] font-bold uppercase">Submitted</span>
+</div>
+<div class="text-[11px] text-on-surface-variant font-medium mb-4">Received: Oct 24, 08:30</div>
+<button class="w-full py-2 text-xs font-bold text-primary border border-outline-variant rounded hover:bg-white transition-colors">
+                                View Report
+                            </button>
+</div>
+<!-- Card: AE -->
+<div class="bg-surface-container-lowest p-5 rounded-xl transition-all hover:bg-surface-container-high">
+<div class="flex justify-between items-start mb-4">
+<h4 class="font-headline font-bold text-lg">AE</h4>
+<span class="bg-error-container text-on-error-container px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight">Pending</span>
+</div>
+<div class="text-[11px] text-on-surface-variant font-medium mb-4">No Activity</div>
+<button class="w-full py-2 text-xs font-bold text-on-surface-variant border border-dashed border-outline-variant rounded">
+                                Notify HOD
+                            </button>
+</div>
+</div>
+</section>
+<!-- Consolidation Area -->
+<section class="col-span-12 lg:col-span-4 space-y-8">
+<div class="bg-white p-8 rounded-2xl shadow-sm border-l-8 border-primary relative overflow-hidden">
+<div class="absolute top-0 right-0 p-4">
+<span class="material-symbols-outlined text-primary-container opacity-20 text-6xl" data-icon="auto_awesome">auto_awesome</span>
+</div>
+<h3 class="font-headline text-2xl font-bold text-primary mb-2">Consolidation</h3>
+<p class="text-sm text-on-surface-variant mb-6">Merge all departmental reports into a unified institutional executive summary.</p>
+<button class="w-full py-4 academic-gradient text-white rounded-xl font-bold flex items-center justify-center space-x-3 shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform group">
+<span class="material-symbols-outlined group-hover:animate-pulse" data-icon="auto_awesome">auto_awesome</span>
+<span>Consolidate Reports (AI)</span>
+</button>
+</div>
+<!-- Academic Editor -->
+<div class="bg-surface-container-lowest rounded-2xl p-1 flex flex-col h-[500px]">
+<div class="glass-panel rounded-t-2xl p-3 flex items-center justify-between border-b border-surface-container">
+<div class="flex space-x-1">
+<button class="p-2 hover:bg-surface-container rounded transition-colors"><span class="material-symbols-outlined text-sm" data-icon="format_bold">format_bold</span></button>
+<button class="p-2 hover:bg-surface-container rounded transition-colors"><span class="material-symbols-outlined text-sm" data-icon="format_italic">format_italic</span></button>
+<button class="p-2 hover:bg-surface-container rounded transition-colors"><span class="material-symbols-outlined text-sm" data-icon="format_list_bulleted">format_list_bulleted</span></button>
+<div class="w-px h-6 bg-surface-container-high mx-1"></div>
+<button class="p-2 hover:bg-surface-container rounded transition-colors"><span class="material-symbols-outlined text-sm" data-icon="link">link</span></button>
+</div>
+<span class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Rich Text Editor</span>
+</div>
+<div class="flex-1 p-6 overflow-y-auto">
+<h2 class="font-headline text-2xl font-bold mb-4">Executive Summary: Academic Year 2025-26</h2>
+<p class="text-on-surface mb-4 leading-relaxed font-body">Based on the submissions from 8 of 13 departments, the overall institutional performance in research output has increased by 14% compared to the previous quarter. The CSE department leads in patents filed, while the ME department shows significant improvement in industry-sponsored projects.</p>
+<p class="text-on-surface mb-4 leading-relaxed font-body">Focus areas for the next quarter include finalizing the inter-disciplinary lab equipment procurement and improving student internship conversion rates in core sectors.</p>
+</div>
+<div class="p-4 bg-surface-container-low rounded-b-2xl flex items-center justify-between">
+<button class="px-4 py-2 text-xs font-bold text-primary hover:bg-surface-container transition-colors rounded">Save Draft</button>
+<button class="px-6 py-2 text-xs font-bold text-white academic-gradient rounded shadow-md">Submit to Head Office</button>
+</div>
+</div>
+</section>
+</div>
+</main>
+</div>
+<!-- Review Panel Drawer (Hidden by default, shown conceptually) -->
+<div class="fixed inset-y-0 right-0 w-[450px] bg-white shadow-2xl z-[60] transform translate-x-full transition-transform duration-300 ease-in-out">
+<div class="h-full flex flex-col p-8">
+<div class="flex justify-between items-center mb-8">
+<h3 class="font-headline text-xl font-bold">Department Report Preview</h3>
+<button class="p-2 hover:bg-surface-container rounded-full"><span class="material-symbols-outlined" data-icon="close">close</span></button>
+</div>
+<div class="flex-1 overflow-y-auto pr-4">
+<div class="flex items-center space-x-4 mb-6">
+<div class="w-12 h-12 academic-gradient rounded flex items-center justify-center text-white font-bold">CSE</div>
+<div>
+<div class="font-bold">Computer Science &amp; Engineering</div>
+<div class="text-xs text-on-surface-variant">Submitted by Dr. A. Srinivas</div>
+</div>
+</div>
+<div class="space-y-6 text-sm leading-relaxed text-on-surface-variant">
+<p>The Computer Science and Engineering department has shown exemplary growth in the current semester. Key highlights include:</p>
+<ul class="list-disc pl-5 space-y-2">
+<li>34 Research papers published in Q1 Scopus indexed journals.</li>
+<li>Successful completion of 2 AICTE sponsored workshops.</li>
+<li>Placement rate maintained at 92% with 15 students receiving offers above 20LPA.</li>
+</ul>
+<img class="w-full rounded-xl border border-surface-container mb-4" data-alt="A clean academic data visualization showing a bar chart of departmental research publications growth over four quarters with deep navy bars on a light ivory background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_ln1KNJrx2SXAGKnQL-QTA7ePTt95Tfr4QevVNUbQh95tcQVszS5LmH-8VAouDvAQ-6Gho55lveawyEbvar0N7OvdaD0hQ8S0S_zu9Q5WlfXqzpYLSvhxjfq5j7Uk9hh1ZXJTI-8G9T8j4G7qy4aGzScmSxTiqmEx_UNKpd3BOmmMYpcdDJzqoOOlXODy_OR-bbhQsFO071TMPSZ2yvzDlIZcDEuQ6Oq083Ci2kl_1gVH5WjIOczz7utNWE5fZZHAaW7U7ndRQ0OY"/>
+<p>Challenges remaining include the shortage of lab space for the new CSG (Cyber Security) batch which requires immediate attention from the administrative office.</p>
+</div>
+</div>
+<div class="pt-6 border-t border-surface-container flex space-x-4">
+<button class="flex-1 py-3 text-sm font-bold text-white bg-primary rounded">Approve Report</button>
+<button class="flex-1 py-3 text-sm font-bold text-error border border-error rounded">Request Revision</button>
+</div>
+</div>
+</div>
+<!-- Footer -->
+<footer class="w-full py-6 flex flex-col items-center justify-center space-y-2 bg-white dark:bg-slate-900 full-width border-t border-[#f1f4f6] dark:border-slate-800 relative z-30">
+<div class="flex space-x-8">
+<a class="text-slate-400 dark:text-slate-500 hover:text-[#002045] dark:hover:text-blue-300 transition-colors font-['Inter'] text-xs uppercase tracking-widest" href="#">Privacy Policy</a>
+<a class="text-slate-400 dark:text-slate-500 hover:text-[#002045] dark:hover:text-blue-300 transition-colors font-['Inter'] text-xs uppercase tracking-widest" href="#">Contact Support</a>
+</div>
+<p class="text-slate-500 dark:text-slate-400 font-['Inter'] text-xs uppercase tracking-widest">© 2026 VNRVJIET</p>
+</footer>
+</body></html>
