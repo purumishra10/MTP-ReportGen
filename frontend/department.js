@@ -7,10 +7,17 @@ document.addEventListener('DOMContentLoaded', () => {
     
     dateInput.valueAsDate = new Date();
 
+    // Dynamically set department name from login
+    const deptName = localStorage.getItem('dept_code') || "CSE";
+    const deptTitle = document.querySelector('aside h2');
+    if (deptTitle) deptTitle.innerText = `${deptName} Dept`;
+    const editorHeader = document.querySelector('#editor-canvas h1');
+    if (editorHeader) editorHeader.innerText = `Department of ${deptName}`;
+
     async function sendToServer(statusVal) {
         const content = editorCanvas.innerText.trim();
         const dateVal = dateInput.value;
-        const dept = "CSE"; // Hardcoded for preview
+        const dept = deptName;
 
         if (!content || !dateVal) {
             alert('Please ensure both Date and Content are provided.');

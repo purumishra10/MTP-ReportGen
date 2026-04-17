@@ -3,7 +3,7 @@ import io
 from docx import Document
 from docx.shared import Inches
 
-def generate_master_report(template_path, output_path, attendance_data, mtp_data, image_data, missing_depts, library_data):
+def generate_master_report(template_path, output_path, attendance_data, mtp_data, image_data, missing_depts, library_data, executive_summary=None):
     doc = Document(template_path)
 
     try:
@@ -25,6 +25,14 @@ def generate_master_report(template_path, output_path, attendance_data, mtp_data
         mtp_cell = table_2.rows[1].cells[1]
         mtp_cell.text = "MTP:\n\n"
         
+        if executive_summary:
+            p = mtp_cell.add_paragraph()
+            r = p.add_run("INSTITUTIONAL EXECUTIVE SUMMARY:\n")
+            r.bold = True
+            r.underline = True
+            mtp_cell.add_paragraph(executive_summary)
+            mtp_cell.add_paragraph("\n")
+            
         if not mtp_data and not missing_depts:
             mtp_cell.text += "Data Not Received\n"
             

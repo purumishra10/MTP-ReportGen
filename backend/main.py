@@ -7,7 +7,7 @@ from extractors.mtp_content import extract_mtp
 from extractors.media import extract_images
 from extractors.library import extract_library_stats
 from generators.master_report import generate_master_report
-from database import init_db, save_mtp_record, get_records_by_date
+from database import init_db, save_mtp_record, get_records_by_date, get_executive_summary
 
 # Expected Departments
 DEPARTMENTS = ["CSE", "IT", "M&MS", "Library", "IQAC"]
@@ -43,7 +43,11 @@ def generate_from_db(date_str):
         
     missing_depts = [d for d in DEPARTMENTS if d not in found_departments]
     
-    generate_master_report(template_path, output_file, [], all_mtp, [], missing_depts, None)
+    # Fetch executive summary
+    summary_res = get_executive_summary(date_str)
+    executive_summary = summary_res[0] if summary_res else None
+    
+    generate_master_report(template_path, output_file, [], all_mtp, [], missing_depts, None, executive_summary=executive_summary)
     return output_file
 DEPARTMENTS = ["CSE", "IT", "M&MS", "Library", "IQAC"]
 

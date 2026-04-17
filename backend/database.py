@@ -17,6 +17,15 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS executive_summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            report_date TEXT UNIQUE,
+            summary_text TEXT,
+            status TEXT DEFAULT 'draft',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -41,7 +50,13 @@ def save_mtp_record(report_date, department, placement_text, status='draft'):
 def get_daily_reports():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute('SELECT DISTINCT report_date FROM mtp_records ORDER BY report_date DESC')
+    # Also include reports that have an executive summary
+    cursor.execute('''
+        SELECT DISTINCT report_date FROM mtp_records 
+        UNION 
+        SELECT DISTINCT report_date FROM executive_summaries
+        ORDER BY report_date DESC
+    ''')
     results = [r[0] for r in cursor.fetchall()]
     conn.close()
     return results
@@ -58,6 +73,7 @@ def delete_record(report_date):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM mtp_records WHERE report_date = ?', (report_date,))
+    cursor.execute('DELETE FROM executive_summaries WHERE report_date = ?', (report_date,))
     conn.commit()
     conn.close()
 
@@ -78,6 +94,29 @@ def update_status(record_id, status):
     cursor.execute('UPDATE mtp_records SET status = ? WHERE id = ?', (status, record_id))
     conn.commit()
     conn.close()
+
+# Executive Summary (Principal Actions)
+def save_executive_summary(report_date, summary_text, status='draft'):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO executive_summaries (report_date, summary_text, status, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(report_date) DO UPDATE SET 
+            summary_text = excluded.summary_text,
+            status = excluded.status,
+            updated_at = excluded.updated_at
+    ''', (report_date, summary_text, status))
+    conn.commit()
+    conn.close()
+
+def get_executive_summary(report_date):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT summary_text, status FROM executive_summaries WHERE report_date = ?', (report_date,))
+    result = cursor.fetchone()
+    conn.close()
+    return result
 
 if __name__ == '__main__':
     init_db()

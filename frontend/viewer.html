@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Report Viewer | Academic Atelier</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#002045",
+                        secondary: "#545f72"
+                    },
+                    fontFamily: { headline: ["Manrope"], body: ["Inter"] }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-surface p-12 flex justify-center min-h-screen font-body">
+    <div class="max-w-4xl w-full">
+        <div class="mb-8 flex items-center justify-between">
+            <button onclick="window.history.back()" class="flex items-center gap-2 text-secondary hover:text-primary font-bold text-sm">
+                <span class="material-symbols-outlined">arrow_back</span>
+                Back
+            </button>
+            <div class="flex gap-4">
+                <button onclick="window.print()" class="px-6 py-2 border border-outline-variant text-primary rounded-lg font-bold text-sm hover:bg-surface-container-low">Print</button>
+            </div>
+        </div>
+
+        <article class="bg-white p-16 academic-shadow rounded-sm border border-outline-variant/10" id="viewer-container">
+            <div class="animate-pulse space-y-8">
+                <div class="h-10 bg-surface-container w-3/4 rounded-md"></div>
+                <div class="h-4 bg-surface-container w-1/4 rounded-md"></div>
+                <div class="space-y-4">
+                    <div class="h-4 bg-surface-container w-full rounded-md"></div>
+                    <div class="h-4 bg-surface-container w-full rounded-md"></div>
+                    <div class="h-4 bg-surface-container w-5/6 rounded-md"></div>
+                </div>
+            </div>
+        </article>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const date = urlParams.get('date');
+        const container = document.getElementById('viewer-container');
+
+        if (!date) {
+            container.innerHTML = '<div class="text-center py-20 text-secondary italic">No report date specified.</div>';
+        } else {
+            loadReport(date);
+        }
+
+        async function loadReport(date) {
+            try {
+                const summaryRes = await fetch(`/api/principal/summary?date=${date}`);
+                const summaryData = await summaryRes.json();
+
+                const recordsRes = await fetch(`/api/tracker/${date}`);
+                const recordsData = await recordsRes.json();
+
+                let html = `
+                    <header class="border-b-2 border-primary/5 pb-8 mb-10">
+                        <div class="flex justify-between items-start mb-6 uppercase text-[10px] font-extrabold tracking-widest text-secondary/40">
+                            <span>VNRVJIET Academic Record</span>
+                            <span>Ref: ${date.replace(/-/g,'')}</span>
+                        </div>
+                        <h1 class="font-headline text-4xl font-extrabold text-primary mb-2">Master Institutional Report</h1>
+                        <p class="text-sm font-bold text-secondary/60">${date}</p>
+                    </header>
+                    <div class="space-y-12">
+                `;
+
+                if (summaryData.summary) {
+                    html += `
+                        <section>
+                            <h2 class="font-headline text-2xl font-bold text-primary mb-4">I. Executive Summary</h2>
+                            <div class="prose prose-slate max-w-none text-secondary leading-relaxed">${summaryData.summary}</div>
+                        </section>
+                    `;
+                }
+
+                const approved = recordsData.records ? recordsData.records.filter(r => r.status === 'approved') : [];
+                if (approved.length > 0) {
+                    html += `
+                        <section>
+                            <h2 class="font-headline text-2xl font-bold text-primary mb-4">II. Departmental Performance</h2>
+                            <div class="space-y-8">
+                                ${approved.map(r => `
+                                    <div class="border-l-4 border-primary/10 pl-6">
+                                        <h3 class="font-headline font-extrabold text-primary pb-2 uppercase tracking-wide text-xs">${r.department}</h3>
+                                        <div class="text-secondary text-sm leading-relaxed">${r.content.replace(/\\n/g, '<br/>')}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </section>
+                    `;
+                }
+
+                html += `</div>`;
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = '<div class="text-center py-20 text-error">Failed to load report.</div>';
+            }
+        }
+    </script>
+</body>
+</html>

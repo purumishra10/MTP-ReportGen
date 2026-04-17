@@ -1,7 +1,10 @@
 import os
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
-from database import get_daily_reports, delete_record, save_mtp_record, init_db, get_records_by_date, update_status
+from database import (
+    get_daily_reports, delete_record, save_mtp_record, init_db, 
+    get_records_by_date, update_status, save_executive_summary, get_executive_summary
+)
 from generators.monthly_report import generate_monthly_report
 from datetime import datetime
 
@@ -13,7 +16,50 @@ init_db()
 
 @app.route('/')
 def index():
+    # This is now the Login Page
     return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    try:
+        data = request.json
+        role = data.get('role', '').lower()
+        dept_code = data.get('dept_code', '').upper()
+        
+        # Simple Mock Auth logic
+        if role == 'department':
+            if not dept_code:
+                return jsonify({"error": "Department code required"}), 400
+            return jsonify({"success": True, "redirect": "department.html", "role": "department", "dept": dept_code})
+        
+        role_map = {
+            "pa": "pa-dashboard.html",
+            "principal": "principal.html",
+            "head office": "archive.html"
+        }
+        
+        if role in role_map:
+            return jsonify({"success": True, "redirect": role_map[role], "role": role})
+            
+        return jsonify({"error": "Invalid role selected"}), 401
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/principal/summary', methods=['GET', 'POST'])
+def handle_principal_summary():
+    try:
+        if request.method == 'GET':
+            date_str = request.args.get('date')
+            summary = get_executive_summary(date_str)
+            if summary:
+                return jsonify({"summary": summary[0], "status": summary[1]})
+            return jsonify({"summary": "", "status": "none"})
+            
+        data = request.json
+        save_executive_summary(data['date'], data['content'], data.get('status', 'draft'))
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/<path:path>')
 def static_files(path):

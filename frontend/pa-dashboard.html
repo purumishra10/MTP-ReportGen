@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>PA Office | MTP Master Report Generator</title>
+    
+    <!-- Tailwind and Plugins -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+
+    <script>
+        // Role check
+        if (localStorage.getItem('user_role') !== 'pa') {
+            window.location.href = 'index.html';
+        }
+    </script>
+
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#002045",
+                        "primary-container": "#1a365d",
+                        "secondary": "#545f72",
+                        "secondary-container": "#d5e0f7",
+                        "on-secondary-container": "#586377",
+                        "surface": "#f7fafc",
+                        "on-surface": "#181c1e",
+                        "on-surface-variant": "#43474e",
+                        "surface-container-low": "#f1f4f6",
+                        "surface-container": "#ebeef0",
+                        "surface-container-high": "#e5e9eb",
+                        "surface-container-lowest": "#ffffff",
+                        "error": "#ba1a1a",
+                        "error-container": "#ffdad6",
+                        "on-error-container": "#93000a",
+                        "outline-variant": "#c4c6cf"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-surface font-body text-on-surface flex flex-col min-h-screen">
+
+<!-- TopNavBar -->
+<header class="bg-white flex justify-between items-center w-full px-8 h-20 fixed top-0 z-50 border-b border-surface-container-low">
+    <div class="flex items-center space-x-6">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 academic-gradient rounded-lg flex items-center justify-center text-white font-bold text-xl">V</div>
+            <span class="text-primary font-bold text-xl font-headline tracking-wide uppercase">VNRVJIET</span>
+        </div>
+        <div class="h-8 w-px bg-surface-container-high"></div>
+        <div class="flex flex-col">
+            <span class="text-xs font-label uppercase tracking-widest text-on-surface-variant">MTP System</span>
+            <span class="text-sm font-semibold text-primary">Master Hub</span>
+        </div>
+    </div>
+    
+    <div class="flex items-center space-x-6">
+        <div class="text-right hidden md:block">
+            <div class="inline-flex items-center px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container text-[10px] font-bold uppercase tracking-tighter">PA Office</div>
+        </div>
+        <div class="flex items-center space-x-3">
+            <button onclick="localStorage.clear(); window.location.href='index.html'" class="bg-primary text-white px-5 py-2 rounded-md text-sm font-bold academic-gradient hover:opacity-90 transition-all active:scale-[0.98]">
+                Logout
+            </button>
+        </div>
+    </div>
+</header>
+
+<div class="flex pt-20 flex-1">
+    
+    <!-- SideNavBar -->
+    <aside class="fixed left-0 top-0 h-screen flex flex-col py-6 px-4 bg-surface-container-low w-64 z-40 mt-20">
+        <div class="px-4 mb-8">
+            <h2 class="font-headline font-extrabold text-primary text-lg">PA's Office</h2>
+            <p class="text-xs text-slate-600 font-medium">Report Consolidation</p>
+        </div>
+        
+        <nav class="flex-1 space-y-2">
+            <a class="flex items-center space-x-3 px-4 py-3 bg-secondary-container text-on-secondary-container border-l-4 border-primary font-['Inter'] text-sm font-medium transition-transform active:scale-[0.98]" href="#">
+                <span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+                <span>Dashboard</span>
+            </a>
+        </nav>
+        
+        <div class="mt-auto px-4 py-4 bg-surface-container-high rounded-xl mb-24">
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-xs text-white font-bold">PA</div>
+                <div class="flex flex-col overflow-hidden">
+                    <span class="text-xs font-bold truncate">Admin</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content Canvas -->
+    <main class="ml-64 flex-1 p-10 min-h-screen">
+        
+        <!-- Section Header -->
+        <div class="mb-12">
+            <h1 class="font-headline text-4xl font-extrabold text-on-surface tracking-tight mb-2">Institutional Consolidator</h1>
+            <p class="text-on-surface-variant max-w-2xl font-body">Merge `.docx` submissions from various departments vertically into standardized institutional reports.</p>
+        </div>
+
+        <!-- Notification Alerts -->
+        <div id="error-msg" class="hidden mb-6 bg-error-container text-on-error-container p-4 rounded-lg text-sm font-bold flex items-center gap-2 border border-error">
+            <span class="material-symbols-outlined">error</span> <span id="error-text">An error occurred.</span>
+        </div>
+        <div id="success-msg" class="hidden mb-6 bg-[#d1f4e0] text-[#0a4d2e] p-4 rounded-lg text-sm font-bold flex items-center gap-2 border border-[#85f8c4]">
+            <span class="material-symbols-outlined">check_circle</span> <span id="success-text">Action completed successfully!</span>
+        </div>
+
+        <div class="grid grid-cols-12 gap-8">
+            
+            <!-- Daily Consolidation Area -->
+            <section class="col-span-12 lg:col-span-8 space-y-8">
+                
+                <form id="generator-form" class="bg-surface-container-lowest rounded-2xl p-8 border border-outline-variant flex flex-col relative overflow-hidden shadow-sm">
+                    <h3 class="font-headline text-2xl font-bold text-primary mb-2">Daily Multi-Department Report</h3>
+                    <p class="text-sm text-on-surface-variant mb-6">Query the database to consolidate all department drafts into a master report.</p>
+                    
+                    <div class="mb-6 flex flex-col w-1/3">
+                        <label for="date" class="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">Reporting Date</label>
+                        <input type="date" id="date" name="date" class="border-outline-variant rounded-md text-sm p-2 outline-none focus:border-primary" required>
+                    </div>
+
+                    <button type="submit" id="submit-btn" class="w-full py-4 academic-gradient text-white rounded-xl font-bold flex items-center justify-center space-x-3 shadow-lg shadow-primary/20 hover:scale-[1.01] transition-transform group">
+                        <span class="material-symbols-outlined group-hover:animate-pulse" data-icon="auto_awesome">auto_awesome</span>
+                        <span>Generate from Database</span>
+                    </button>
+                    
+                    <button type="button" id="loading" class="hidden w-full py-4 bg-surface-container-high text-on-surface-variant rounded-xl font-bold flex items-center justify-center space-x-3 shadow-sm cursor-not-allowed">
+                        <span class="material-symbols-outlined animate-spin">refresh</span>
+                        <span>Compiling...</span>
+                    </button>
+                </form>
+
+                <!-- Department Tracker (Bento Grid Style) -->
+                <div class="flex justify-between items-end mb-4 pt-8">
+                    <h3 class="font-headline text-xl font-bold text-primary">Department Submission Tracker</h3>
+                    <span class="text-xs font-label uppercase tracking-widest text-on-surface-variant">13 Departments Total</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <!-- Card: CSE (Submitted) -->
+                    <div class="bg-surface-container-lowest p-5 rounded-xl transition-all hover:bg-surface-container-high group border border-outline-variant/30">
+                        <div class="flex justify-between items-start mb-4">
+                            <h4 class="font-headline font-bold text-lg">CSE</h4>
+                            <span class="bg-tertiary-container text-on-tertiary-container px-2 py-1 rounded text-[10px] font-bold uppercase">Submitted</span>
+                        </div>
+                        <div class="text-[11px] text-on-surface-variant font-medium mb-4">Received: Oct 23, 14:20</div>
+                        <button class="w-full py-2 text-xs font-bold text-primary border border-outline-variant rounded hover:bg-white transition-colors">Review</button>
+                    </div>
+                    <!-- Card: ECE (Pending) -->
+                    <div class="bg-surface-container-lowest p-5 rounded-xl transition-all hover:bg-surface-container-high group border border-outline-variant/30">
+                        <div class="flex justify-between items-start mb-4">
+                            <h4 class="font-headline font-bold text-lg">ECE</h4>
+                            <span class="bg-error-container text-on-error-container px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight">Pending</span>
+                        </div>
+                        <div class="text-[11px] text-on-surface-variant font-medium mb-4">Deadline: Today, 17:00</div>
+                        <button class="w-full py-2 text-xs font-bold text-on-surface-variant border border-dashed border-outline-variant rounded cursor-not-allowed">Review</button>
+                    </div>
+                    <!-- Card: IT (Submitted) -->
+                    <div class="bg-surface-container-lowest p-5 rounded-xl transition-all hover:bg-surface-container-high border border-outline-variant/30">
+                        <div class="flex justify-between items-start mb-4">
+                            <h4 class="font-headline font-bold text-lg">IT</h4>
+                            <span class="bg-tertiary-container text-on-tertiary-container px-2 py-1 rounded text-[10px] font-bold uppercase">Submitted</span>
+                        </div>
+                        <div class="text-[11px] text-on-surface-variant font-medium mb-4">Received: Oct 24, 09:15</div>
+                        <button class="w-full py-2 text-xs font-bold text-primary border border-outline-variant rounded hover:bg-white transition-colors">Review</button>
+                    </div>
+                </div>
+
+                <!-- Monthly Section Separator -->
+                <div class="relative py-4">
+                    <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-surface-container-high"></div></div>
+                    <div class="relative flex justify-center"><span class="bg-surface px-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Archival Aggregation</span></div>
+                </div>
+
+                <!-- Monthly Consolidation Form -->
+                <div class="bg-surface-container-lowest rounded-2xl p-8 border border-outline-variant flex flex-col relative overflow-hidden shadow-sm">
+                    <div class="absolute top-0 right-0 p-4">
+                        <span class="material-symbols-outlined text-primary-container opacity-10 text-6xl" data-icon="inventory_2">inventory_2</span>
+                    </div>
+                    
+                    <h3 class="font-headline text-2xl font-bold text-primary mb-2">Monthly Master Report</h3>
+                    <p class="text-sm text-on-surface-variant mb-6">Aggregate all saved daily database entries from the last 30 days into a single document.</p>
+                    
+                    <button type="button" id="monthly-btn" class="w-full py-4 bg-surface-container-highest text-primary border border-outline-variant rounded-xl font-bold flex items-center justify-center space-x-3 hover:bg-[#d5e0f7] transition-colors mt-2">
+                        <span class="material-symbols-outlined">calendar_month</span>
+                        <span>Generate Monthly Report</span>
+                    </button>
+                    
+                    <button type="button" id="monthly-loading" class="hidden w-full py-4 bg-surface-container-high text-on-surface-variant rounded-xl font-bold flex items-center justify-center space-x-3 shadow-sm cursor-not-allowed mt-2">
+                        <span class="material-symbols-outlined animate-spin">refresh</span>
+                        <span>Aggregating...</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Submission History right column -->
+            <section class="col-span-12 lg:col-span-4 flex flex-col">
+                <div class="bg-surface-container-low rounded-2xl p-6 h-full flex flex-col border border-outline-variant flex-grow">
+                    <div class="flex items-center justify-between mb-8">
+                        <h3 class="font-headline font-bold text-lg text-primary">Database Records</h3>
+                        <span class="material-symbols-outlined text-primary/40">history</span>
+                    </div>
+                    
+                    <p class="text-xs text-on-surface-variant mb-4">Dates containing extracted MTP entries. Ensure incorrect entries are deleted.</p>
+
+                    <div class="space-y-3 overflow-y-auto pr-2 custom-scrollbar flex-1" id="history-list">
+                        <!-- Items injected by JS -->
+                        <div class="flex justify-center p-4"><span class="material-symbols-outlined animate-spin text-primary">refresh</span></div>
+                    </div>
+                    
+                </div>
+            </section>
+        </div>
+    </main>
+</div>
+
+<!-- Review Modal (Hidden by Default) -->
+<div id="review-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-primary/20 backdrop-blur-sm" onclick="closeReviewModal()"></div>
+    
+    <!-- Modal Content -->
+    <div class="relative w-full max-w-4xl bg-surface-container-lowest rounded-2xl shadow-2xl border border-outline-variant/30 flex flex-col h-[85vh] overflow-hidden transform transition-all">
+        
+        <!-- Header -->
+        <div class="flex items-center justify-between p-6 border-b border-surface-container-high bg-white shrink-0">
+            <div>
+                <div class="flex items-center gap-3 mb-1">
+                    <span class="bg-secondary-container text-on-secondary-container px-2.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-widest" id="modal-dept">CSE</span>
+                    <span class="text-xs font-semibold text-on-surface-variant" id="modal-date">Oct 24, 2026</span>
+                </div>
+                <h2 class="font-headline font-extrabold text-2xl text-primary">Department Submission Review</h2>
+            </div>
+            <button onclick="closeReviewModal()" class="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center transition-colors">
+                <span class="material-symbols-outlined text-[20px] text-on-surface-variant">close</span>
+            </button>
+        </div>
+
+        <!-- Body / Content -->
+        <div class="flex-1 overflow-y-auto p-8 relative">
+            <div id="modal-content-area" class="prose max-w-none font-body text-on-surface whitespace-pre-wrap">
+                <!-- Text Injected Here -->
+            </div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="p-6 border-t border-surface-container-high bg-[#f8f9fa] flex items-center justify-between shrink-0">
+            <p class="text-xs text-on-surface-variant font-medium flex items-center gap-2">
+                <span class="material-symbols-outlined text-sm">info</span>
+                Review content carefully before determining status
+            </p>
+            <div class="flex gap-4">
+                <button onclick="submitReviewAction('draft')" class="px-6 py-2.5 font-headline font-bold text-sm text-[#ba1a1a] border border-[#ffdad6] bg-[#fff8f7] rounded-md hover:bg-[#ffdad6] transition-colors flex items-center gap-2">
+                    <span class="material-symbols-outlined text-sm">close</span>
+                    Reject (Send Back)
+                </button>
+                <button onclick="submitReviewAction('approved')" class="px-8 py-2.5 academic-gradient font-headline font-bold text-sm text-white rounded-md shadow-md hover:opacity-90 active:scale-95 transition-all flex items-center gap-2">
+                    <span class="material-symbols-outlined text-sm">check_circle</span>
+                    Approve
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts -->
+<script src="script.js"></script>
+
+</body>
+</html>
