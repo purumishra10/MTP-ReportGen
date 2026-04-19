@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Academic Archive | VNRVJIET</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#002045",
+                        secondary: "#545f72",
+                        "surface-container": "#ebeef0",
+                        "surface-container-high": "#e5e9eb",
+                        "surface-container-lowest": "#ffffff"
+                    },
+                    fontFamily: { headline: ["Manrope"], body: ["Inter"] }
+                }
+            }
+        }
+    </script>
+    <script>
+        // Role check - Head Office and Principal can access archive
+        const role = localStorage.getItem('user_role');
+        if (role !== 'head office' && role !== 'principal' && role !== 'pa') {
+            window.location.href = 'index.html';
+        }
+    </script>
+</head>
+<body class="bg-[#f7fafc] font-body text-[#181c1e]">
+    <header class="w-full top-0 z-50 bg-[#f7fafc] flex justify-between items-center px-12 py-6 border-b border-outline-variant/20 sticky">
+        <div class="flex items-center gap-6">
+            <div class="w-[50px] h-[50px] academic-gradient flex items-center justify-center rounded-lg text-white font-bold text-xl">V</div>
+            <div class="flex flex-col">
+                <h1 class="text-2xl font-bold tracking-tight text-primary font-headline">Academic Archive</h1>
+                <p class="text-xs font-bold text-secondary/60 tracking-widest uppercase">Institutional Repository</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-8">
+            <div class="text-right">
+                <p class="font-headline font-bold text-primary text-sm" id="live-date-time">October 24, 2026</p>
+                <span class="inline-flex items-center rounded-full bg-secondary-container px-2.5 py-0.5 text-[10px] font-bold text-primary uppercase tracking-widest mt-1" id="role-tag">
+                    Head Office
+                </span>
+            </div>
+            <button onclick="localStorage.clear(); window.location.href='index.html'" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-container-high hover:bg-[#e5e9eb] transition-colors text-secondary font-bold text-sm">
+                <span class="material-symbols-outlined text-xl">logout</span>
+                Logout
+            </button>
+        </div>
+    </header>
+
+    <main class="flex min-h-screen">
+        <aside class="w-1/4 bg-[#f1f4f6] flex flex-col py-8 px-6 gap-8 border-r border-outline-variant/20">
+            <div class="flex flex-col gap-4">
+                <div class="flex items-center justify-between px-2">
+                    <h3 class="font-headline font-extrabold text-primary tracking-tight uppercase text-[11px]">Consolidated Reports List</h3>
+                    <span class="material-symbols-outlined text-sm text-outline">inventory_2</span>
+                </div>
+                <nav class="flex flex-col gap-1 custom-scrollbar overflow-y-auto max-h-[70vh]" id="archive-list">
+                    <!-- History list injected here -->
+                </nav>
+            </div>
+        </aside>
+
+        <section class="w-3/4 p-12 bg-white overflow-y-auto" id="report-view-container">
+            <div class="max-w-4xl mx-auto flex flex-col gap-10 items-center justify-center h-full text-center" id="empty-state">
+                <span class="material-symbols-outlined text-primary/10 text-9xl">folder_managed</span>
+                <div>
+                    <h2 class="text-2xl font-bold text-primary mb-2">Select a Report to View</h2>
+                    <p class="text-secondary">Browse the sidebar to access institutional memory and consolidated data.</p>
+                </div>
+            </div>
+
+            <div class="max-w-4xl mx-auto hidden" id="report-details">
+                <article class="bg-white p-12 min-h-[1000px] flex flex-col border border-outline-variant/20 rounded-md shadow-lg" id="printable-report">
+                    <header class="border-b-2 border-primary/5 pb-8 mb-10">
+                        <div class="flex justify-between items-start mb-6">
+                            <span class="text-[10px] font-bold tracking-[0.3em] text-secondary/50 uppercase">VNRVJIET • Institutional Archive</span>
+                            <span class="text-[10px] font-medium text-secondary/40" id="report-ref">REF: ARCH-20261024</span>
+                        </div>
+                        <h2 class="font-headline text-3xl font-extrabold text-primary tracking-tight mb-4 leading-tight" id="report-title">
+                            Master Consolidated Institutional Report - October 24, 2026
+                        </h2>
+                        <div class="flex flex-wrap items-center gap-6">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-secondary text-base">verified_user</span>
+                                <span class="text-[10px] font-bold font-headline uppercase tracking-widest text-secondary/60">Classification: Restricted</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-on-tertiary-container text-base">check_circle</span>
+                                <span class="text-[10px] font-bold font-headline uppercase tracking-widest text-primary">Status: Finalized</span>
+                            </div>
+                        </div>
+                    </header>
+                    
+                    <div class="flex-grow space-y-10 text-secondary leading-relaxed font-body" id="report-body">
+                        <!-- Content injected here -->
+                    </div>
+
+                    <footer class="mt-20 pt-8 border-t border-outline-variant/10 flex justify-between items-end grayscale opacity-50">
+                        <div class="flex flex-col gap-1">
+                            <span class="text-[10px] font-bold uppercase tracking-widest">Digital Archive</span>
+                            <div class="font-headline text-xl font-bold italic">VNRVJIET Administration</div>
+                        </div>
+                    </footer>
+                </article>
+
+                <div class="flex justify-center gap-6 py-12">
+                     <button id="download-report-btn" class="bg-primary text-white px-8 py-3.5 rounded-md font-headline font-bold text-sm flex items-center gap-3 transition-all hover:scale-[1.02] shadow-lg shadow-primary/20">
+                        <span class="material-symbols-outlined">download</span>
+                        Download Word Source
+                    </button>
+                    <button onclick="window.print()" class="border border-outline-variant text-primary px-8 py-3.5 rounded-md font-headline font-bold text-sm flex items-center gap-3 transition-all hover:bg-surface-container-low">
+                        <span class="material-symbols-outlined">print</span>
+                        Print View
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="archive.js"></script>
+</body>
+</html>

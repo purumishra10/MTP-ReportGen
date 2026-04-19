@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | Academic Atelier</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#002045",
+                        secondary: "#545f72",
+                        "surface-variant": "#e0e3e5",
+                        "outline-variant": "#c4c6cf"
+                    },
+                    fontFamily: {
+                        headline: ["Manrope"],
+                        body: ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-[#f8fafc] h-screen flex items-center justify-center font-body p-4 overflow-hidden relative">
+    
+    <!-- Background Decor -->
+    <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px]"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px]"></div>
+
+    <div class="w-full max-w-md glass-panel p-8 rounded-3xl shadow-2xl border border-white relative z-10">
+        <!-- Logo/Header -->
+        <div class="text-center mb-10">
+            <div class="w-16 h-16 academic-gradient rounded-2xl mx-auto flex items-center justify-center text-white font-extrabold text-2xl shadow-xl shadow-primary/20 mb-4">A</div>
+            <h1 class="font-headline text-3xl font-extrabold text-primary tracking-tight">Academic Atelier</h1>
+            <p class="text-sm text-secondary font-medium mt-1">MTP Institutional Portal</p>
+        </div>
+
+        <form id="login-form" class="space-y-6">
+            <!-- Credentials -->
+            <div class="space-y-4">
+                <div class="space-y-2">
+                    <label class="text-xs font-bold uppercase tracking-widest text-primary/60 ml-1">Username</label>
+                    <input type="text" id="username" placeholder="e.g. cse, pa, principal" class="w-full px-4 py-4 bg-white border border-outline-variant rounded-xl text-primary font-bold focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-xs font-bold uppercase tracking-widest text-primary/60 ml-1">Password</label>
+                    <input type="password" id="password" placeholder="••••••••" class="w-full px-4 py-4 bg-white border border-outline-variant rounded-xl text-primary font-bold focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all">
+                </div>
+            </div>
+
+            <!-- Login Button -->
+            <button type="submit" class="w-full py-4 academic-gradient text-white font-headline font-bold rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+                <span>Enter Portal</span>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </button>
+        </form>
+
+        <!-- Footer -->
+        <div class="mt-12 text-center">
+            <p class="text-[10px] text-secondary/40 font-bold uppercase tracking-[0.2em]">© 2026 VNRVJIET Institutional Systems</p>
+        </div>
+    </div>
+
+    <script>
+        const loginForm = document.getElementById('login-form');
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    // Store role in local storage for frontend routing
+                    localStorage.setItem('user_role', data.role);
+                    if (data.department) localStorage.setItem('dept_code', data.department);
+                    
+                    // Redirect based on role
+                    const roleRedirects = {
+                        'department': 'department.html',
+                        'pa': 'pa-dashboard.html',
+                        'principal': 'principal.html',
+                        'head_office': 'archive.html'
+                    };
+                    window.location.href = roleRedirects[data.role] || 'index.html';
+                } else {
+                    alert(data.detail || 'Login failed');
+                }
+            } catch (error) {
+                alert('Login failed: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html>

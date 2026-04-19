@@ -1,165 +1,271 @@
+import os
+from typing import List, Optional, Dict
+from datetime import datetime
+
 from dotenv import load_dotenv
 load_dotenv()
 
-import os
-from datetime import date
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Depends, Request, Response
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
-from typing import Annotated
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-from backend.services.normalizer import normalize, truncate, extract_images
-from backend.services.ai_service import consolidate, verify_facts
-from backend.services.report_generator import generate_docx
-from backend.services import supabase_client
-
-app = FastAPI(
-    title="VNRVJIET Daily Report Consolidation",
-    description="Upload department reports and get a consolidated daily report in DOCX format.",
-    version="2.0.0",
+# Initialize DB and Users
+from backend.database import (
+    init_db, save_mtp_record, get_records_by_date, get_records_by_dept, 
+    update_status, get_all_dates, delete_records_by_date, 
+    save_executive_summary, get_executive_summary, get_record
+)
+from backend.auth import (
+    seed_default_users, verify_password, create_session, 
+    get_session_user, delete_session, get_user
 )
 
+# Services
+from backend.services.ai_service import consolidate
+from backend.services.normalizer import normalize, truncate, extract_images
+from backend.services.report_generator import generate_docx
+from backend.services import supabase_client
+from backend.services.portal_report_service import generate_from_portal
+
+# Setup application
+app = FastAPI(title="MTP Daily Report API & Portal")
+
+# CORS setup
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx"}
-LIBRARY_DEPT_CODES = {"library", "lib", "lirc"}
+# --- Startup ---
+@app.on_event("startup")
+def startup_event():
+    print("[INFO] Initializing SQLite database...")
+    init_db()
+    seed_default_users()
+    os.makedirs("generated_reports", exist_ok=True)
+    
+# --- Dependencies ---
+def get_current_user(request: Request):
+    token = request.cookies.get("session_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = get_session_user(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
+    return user
+
+def require_role(allowed_roles: List[str]):
+    def role_checker(user: dict = Depends(get_current_user)):
+        if user["role"] not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return user
+    return role_checker
+
+# --- API Models ---
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class DeptSubmitRequest(BaseModel):
+    date: str
+    content: str
+    status: str
+
+class ReviewRequest(BaseModel):
+    date: str
+    department: str
+    status: str
+
+class SummaryRequest(BaseModel):
+    date: str
+    content: str
+    status: str
+
+# --- Authentication Endpoints ---
+
+@app.post("/api/login")
+def login(req: LoginRequest, response: Response):
+    user = get_user(req.username)
+    if not user or not verify_password(req.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+        
+    token = create_session(req.username)
+    
+    # Set cookie (HttpOnly for security)
+    response.set_cookie(
+        key="session_token", 
+        value=token, 
+        httponly=False,  # Set to False so client JS can see if logged in easily, though HttpOnly is better for prod. We will use frontend JS to redirect based on 'role'.
+        max_age=7*24*3600
+    )
+    
+    return {"message": "Logged in successfully", "role": user["role"], "department": user["department"]}
+
+@app.post("/api/logout")
+def logout(request: Request, response: Response):
+    token = request.cookies.get("session_token")
+    if token:
+        delete_session(token)
+    response.delete_cookie("session_token")
+    return {"message": "Logged out"}
+
+@app.get("/api/me")
+def me(user: dict = Depends(get_current_user)):
+    return {"username": user["username"], "role": user["role"], "department": user["department"]}
 
 
-# ── Department code → name mapping ───────────────────────────────────────────
+# --- Department Endpoints ---
 
-DEPT_MAPPING = {
-    "cse":       "Computer Science & Engineering",
-    "cys":       "Cyber Security, Data Science & AIDS",
-    "aiml":      "Artificial Intelligence & Machine Learning, and IoT",
-    "it":        "Information Technology",
-    "ece":       "Electronics & Communication Engineering",
-    "eee":       "Electrical & Electronics Engineering",
-    "eie":       "Electronics & Instrumentation Engineering",
-    "me":        "Mechanical Engineering",
-    "mech":      "Mechanical Engineering",
-    "civil":     "Civil Engineering",
-    "chem":      "Chemical Engineering",
-    "ae":        "Automobile Engineering",
-    "mtp":       "Mentorship, Training & Placements",
-    "english":   "English Department",
-    "eng":       "English Department",
-    "m&ms":      "Management & Mathematical Sciences",
-    "ms":        "Management & Mathematical Sciences",
-    "library":   "Library & Information Resource Centre",
-    "lib":       "Library & Information Resource Centre",
-    "lirc":      "Library & Information Resource Centre",
-}
+@app.get("/api/department/submissions")
+def get_dept_submissions(user: dict = Depends(require_role(["department"]))):
+    records = get_records_by_dept(user["department"])
+    return {"records": records}
+    
+@app.get("/api/department/submission/{date}")
+def get_dept_submission_by_date(date: str, user: dict = Depends(require_role(["department"]))):
+    record = get_record(date, user["department"])
+    if not record:
+        return {"content": "", "status": "draft"}
+    return record
+
+@app.post("/api/department/submit")
+def submit_dept_report(req: DeptSubmitRequest, user: dict = Depends(require_role(["department"]))):
+    if req.status not in ["draft", "pending_review"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
+    save_mtp_record(req.date, user["department"], req.content, req.status)
+    return {"message": "Saved successfully"}
 
 
-def _dept_name_from_code(code: str) -> str:
-    return DEPT_MAPPING.get(code, code.upper())
+# --- PA Office Endpoints ---
+
+@app.get("/api/tracker/{date}")
+def get_tracker(date: str, user: dict = Depends(require_role(["pa", "principal"]))):
+    records = get_records_by_date(date)
+    return {"records": records}
+
+@app.post("/api/tracker/review")
+def review_submission(req: ReviewRequest, user: dict = Depends(require_role(["pa"]))):
+    if req.status not in ["approved", "rejected", "pending_review"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+        
+    success = update_status(req.date, req.department, req.status)
+    if not success:
+        raise HTTPException(status_code=404, detail="Record not found")
+    return {"message": f"Status updated to {req.status}"}
+
+@app.get("/api/history")
+def get_history(user: dict = Depends(require_role(["pa", "principal", "head_office"]))):
+    dates = get_all_dates()
+    
+    # Enrich with Supabase reports if enabled?
+    # For now just return local dates.
+    return {"dates": dates}
+
+@app.delete("/api/history/{date}")
+def clear_date(date: str, user: dict = Depends(require_role(["pa"]))):
+    delete_records_by_date(date)
+    return {"message": f"Deleted records for {date}"}
+
+@app.post("/api/generate")
+def api_generate_portal_report(req: dict, user: dict = Depends(require_role(["pa"]))):
+    date_str = req.get("date")
+    if not date_str:
+        raise HTTPException(status_code=400, detail="Date required")
+        
+    try:
+        docx_bytes = generate_from_portal(date_str)
+        if not docx_bytes:
+            raise HTTPException(status_code=500, detail="Failed to generate report")
+            
+        output_dir = "generated_reports"
+        output_path = os.path.join(output_dir, f"daily_report_{date_str}.docx")
+        with open(output_path, "wb") as f:
+            f.write(docx_bytes)
+            
+        return {"message": "Generated successfully", "download_url": f"/reports/download/daily_report_{date_str}.docx"}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/monthly")
+def generate_monthly(req: dict, user: dict = Depends(require_role(["pa"]))):
+    return JSONResponse(status_code=501, content={"message": "Monthly generation via AI from portal is not yet implemented."})
 
 
-# ── Health check ──────────────────────────────────────────────────────────────
+# --- Principal Endpoints ---
 
-@app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "supabase": supabase_client.is_enabled(),
-    }
+@app.get("/api/principal/summary/{date}")
+def get_summary(date: str, user: dict = Depends(require_role(["principal", "pa"]))):
+    record = get_executive_summary(date)
+    return {"record": record}
+
+@app.post("/api/principal/summary")
+def save_summary(req: SummaryRequest, user: dict = Depends(require_role(["principal"]))):
+    if req.status not in ["draft", "finalized"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+        
+    save_executive_summary(req.date, req.content, req.status)
+    return {"message": "Saved successfully"}
 
 
-# ── Main consolidation endpoint ──────────────────────────────────────────────
+# --- Original Main Branch Endpoints (Supabase/File Upload) ---
 
 @app.post("/consolidate")
-async def consolidate_reports(
-    report_date: Annotated[str, Form(description="Date in YYYY-MM-DD format")],
-    files: Annotated[
-        list[UploadFile],
-        File(description="Upload all department report files (.docx or .pdf). Name each file as dept_code.docx")
-    ],
+async def api_consolidate_files(
+    report_date: str = Form(...),
+    files: List[UploadFile] = File(...),
 ):
-    """
-    Upload department reports and get a consolidated daily report.
+    """Original file upload endpoint."""
+    if not report_date:
+        raise HTTPException(status_code=400, detail="report_date is required")
 
-    Example:
-        curl -X POST http://localhost:8000/consolidate \\
-          -F "report_date=2026-03-16" \\
-          -F "files=@reports/cse.docx" \\
-          -F "files=@reports/ece.docx"
-    """
-    # Validate inputs
-    if not files:
-        raise HTTPException(status_code=400, detail="No files uploaded.")
+    print(f"\n[INFO] Starting consolidation for date: {report_date}")
+    print(f"[INFO] Received {len(files)} files")
 
-    try:
-        date.fromisoformat(report_date)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="report_date must be in YYYY-MM-DD format.")
-
-    # Read, validate, and normalize files
     dept_reports = []
     all_images = []
-    errors = []
 
-    for upload in files:
-        filename = upload.filename or "unknown"
-        stem, ext = os.path.splitext(filename)
-        ext = ext.lower()
+    # Parse each file
+    for file in files:
+        file_bytes = await file.read()
+        filename = file.filename
+        print(f"  -> Processing file: {filename}")
 
-        if ext not in ALLOWED_EXTENSIONS:
-            errors.append(f"{filename}: unsupported file type (only .docx and .pdf allowed)")
-            continue
+        from backend.batch_processor import get_dept_code, LIBRARY_DEPT_CODES
+        dept_code = get_dept_code(filename)
+        if dept_code == "unknown":
+            dept_code = os.path.splitext(filename)[0].lower()[:10]
 
-        try:
-            file_bytes = await upload.read()
-        except Exception as e:
-            errors.append(f"{filename}: failed to read file - {e}")
-            continue
-
-        if not file_bytes:
-            errors.append(f"{filename}: file is empty")
-            continue
-
-        dept_code = stem.lower().strip()
         is_library = dept_code in LIBRARY_DEPT_CODES
+        from backend.batch_processor import _dept_name_from_code
         dept_name = _dept_name_from_code(dept_code)
 
         try:
             text = normalize(file_bytes, filename, is_library=is_library)
             text = truncate(text, max_chars=15000)
-        except Exception as e:
-            errors.append(f"{filename}: failed to extract text — {e}")
-            continue
 
-        if text == "[No content extracted]":
-            errors.append(f"{filename}: no readable content found in file")
-            continue
-
-        # Extract images from DOCX files
-        try:
             images = extract_images(file_bytes, filename, dept_code)
             all_images.extend(images)
+
+            dept_reports.append({
+                "dept_code": dept_code,
+                "dept_name": dept_name,
+                "text": text,
+            })
+            print(f"     [OK] Extracted text ({len(text)} chars) & {len(images)} images")
         except Exception as e:
-            print(f"[WARNING] Image extraction failed for {filename}: {e}")
+            print(f"     [ERROR] Failed to process {filename}: {e}")
 
-        dept_reports.append({
-            "dept_code": dept_code,
-            "dept_name": dept_name,
-            "text": text,
-        })
-
-    if not dept_reports:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "message": "No files could be processed successfully.",
-                "file_errors": errors,
-            },
-        )
-
-    # Deduplicate template images: any image hash appearing in 3+ files is a logo/template
+    # Remove duplicate template images
     if all_images:
         import hashlib
         from collections import Counter
@@ -168,114 +274,117 @@ async def consolidate_reports(
             img["_hash"] = hashlib.md5(img["image_bytes"]).hexdigest()
             hash_counts[img["_hash"]] += 1
         template_hashes = {h for h, c in hash_counts.items() if c >= 3}
-        before = len(all_images)
         all_images = [img for img in all_images if img["_hash"] not in template_hashes]
-        filtered = before - len(all_images)
-        if filtered:
-            print(f"[INFO] Filtered {filtered} template/logo images (hash dedup)")
 
-
-    # AI consolidation
+    # AI Consolidation
     try:
+        print("[INFO] Calling AI Service for consolidation...")
         consolidated = consolidate(report_date, dept_reports)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=502,
-            detail={"message": "AI consolidation failed (invalid JSON response)", "error": str(e)},
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=502,
-            detail={"message": "Unexpected error during AI consolidation", "error": str(e)},
-        )
+        
+        # Add a test executive summary (optional fallback if needed)
+        # consolidated["executive_summary"] = "This is a consolidated test from files."
 
-    # Fact verification (non-blocking — failures don't stop report generation)
-    try:
-        issues = verify_facts(consolidated, dept_reports)
-    except Exception:
-        issues = []
-        consolidated["_fact_issues"] = []
-
-    # Generate DOCX
-    try:
         output_dir = "generated_reports"
         os.makedirs(output_dir, exist_ok=True)
-        filename = f"daily_report_{report_date}.docx"
-        output_path = os.path.join(output_dir, filename)
-        docx_bytes = generate_docx(consolidated, output_path=output_path,
-                                    all_images=all_images)
-        print(f"[SUCCESS] DOCX generated at: {output_path}")
+        filename_out = f"daily_report_{report_date}.docx"
+        output_path = os.path.join(output_dir, filename_out)
+
+        print("[INFO] Generating final DOCX report...")
+        docx_bytes = generate_docx(consolidated, output_path=output_path, all_images=all_images)
+        print(f"[SUCCESS] Report saved to: {output_path}")
+
+        # Supabase upload
+        if supabase_client.is_enabled():
+            try:
+                dept_codes = [r["dept_code"] for r in dept_reports]
+                saved_record = supabase_client.save_report(
+                    report_date=report_date,
+                    departments=dept_codes,
+                    docx_bytes=docx_bytes,
+                    filename=filename_out
+                )
+                print("[INFO] Successfully uploaded to Supabase.")
+            except Exception as e:
+                print(f"[WARNING] Supabase upload failed: {e}")
+
+        # Provide a URL relative path
+        filename_encoded = filename_out.replace(" ", "%20")
+        download_url = f"/reports/download/{filename_encoded}"
+        
+        return {
+            "status": "success",
+            "message": "Report consolidated and generated successfully.",
+            "report_date": report_date,
+            "download_url": download_url
+        }
+
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={"message": "Report generation failed", "error": str(e)},
-        )
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Consolidation failed: {str(e)}")
 
-    # Save to Supabase (non-blocking)
-    supabase_record = None
-    if supabase_client.is_enabled():
-        try:
-            dept_codes = [r["dept_code"] for r in dept_reports]
-            supabase_record = supabase_client.save_report(
-                report_date=report_date,
-                departments=dept_codes,
-                docx_bytes=docx_bytes,
-                filename=filename,
-                metadata={"fact_issues": issues, "file_errors": errors},
-            )
-        except Exception as e:
-            print(f"[WARNING] Supabase save failed: {e}")
-
-    # Return the DOCX file directly
-    return Response(
-        content=docx_bytes,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-        },
-    )
-
-
-# ── Report history endpoints (Supabase) ──────────────────────────────────────
 
 @app.get("/reports")
 def list_reports():
-    """List all previously generated reports."""
+    """List all reports from Supabase if enabled, else return empty."""
     if not supabase_client.is_enabled():
-        return {"message": "Supabase not configured. Reports are saved locally in generated_reports/ folder."}
-    return supabase_client.list_reports()
+        return {"status": "success", "reports": [], "message": "Supabase not enabled."}
+    
+    reports = supabase_client.list_reports(limit=50)
+    return {"status": "success", "reports": reports}
 
 
 @app.get("/reports/{report_id}")
 def get_report(report_id: str):
-    """Get details of a specific report."""
+    """Get report details from Supabase."""
     if not supabase_client.is_enabled():
-        raise HTTPException(status_code=503, detail="Supabase not configured.")
+        raise HTTPException(status_code=501, detail="Supabase not enabled")
+        
+    report = supabase_client.get_report(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+        
+    return {"status": "success", "report": report}
 
-    record = supabase_client.get_report(report_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Report not found.")
-    return record
-
-
-@app.get("/reports/{report_id}/download")
-def download_report(report_id: str):
-    """Download a previously generated report file."""
-    if not supabase_client.is_enabled():
-        raise HTTPException(status_code=503, detail="Supabase not configured.")
-
-    record = supabase_client.get_report(report_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Report not found.")
-
-    file_bytes = supabase_client.get_report_file(record["file_path"])
-    if not file_bytes:
-        raise HTTPException(status_code=404, detail="Report file not found in storage.")
-
-    return Response(
-        content=file_bytes,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": f'attachment; filename="daily_report_{record["report_date"]}.docx"',
-        },
+@app.get("/reports/download/{filename}")
+def download_local_report(filename: str):
+    """Download a generated report from local folder generated_reports."""
+    filepath = os.path.join("generated_reports", filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    return FileResponse(
+        path=filepath, 
+        filename=filename, 
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
+
+@app.get("/reports/supabase/download")
+def download_supabase_report(file_path: str):
+    """Download a report directly from Supabase storage."""
+    if not supabase_client.is_enabled():
+        raise HTTPException(status_code=501, detail="Supabase not enabled")
+        
+    data = supabase_client.get_report_file(file_path)
+    if not data:
+        raise HTTPException(status_code=404, detail="File not found or download failed")
+        
+    filename = os.path.basename(file_path)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+# --- Static Frontend Serving ---
+
+# Mount the static frontend directory. Order is important, this should be last.
+if os.path.exists("frontend"):
+    app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+else:
+    print("[WARNING] 'frontend' directory not found. Static files will not be served.")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)

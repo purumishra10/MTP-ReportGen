@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Principal's Office Dashboard | VNRVJIET</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#002045",
+                        secondary: "#545f72",
+                        "surface-container": "#ebeef0",
+                        "surface-container-high": "#e5e9eb",
+                        "surface-container-lowest": "#ffffff"
+                    },
+                    fontFamily: { headline: ["Manrope"], body: ["Inter"] }
+                }
+            }
+        }
+    </script>
+    <script>
+        // Role check
+        if (localStorage.getItem('user_role') !== 'principal') {
+            window.location.href = 'index.html';
+        }
+    </script>
+</head>
+<body class="bg-[#f7fafc] font-body text-[#181c1e]">
+    <header class="bg-white flex justify-between items-center w-full px-8 h-20 fixed top-0 z-50 border-b border-outline-variant/20">
+        <div class="flex items-center space-x-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 academic-gradient rounded-lg flex items-center justify-center text-white font-bold text-xl">V</div>
+                <span class="text-primary font-bold text-xl font-headline tracking-wide uppercase">Institutional Portal</span>
+            </div>
+            <div class="h-8 w-px bg-surface-container-high"></div>
+            <div class="flex flex-col">
+                <span class="text-[10px] font-bold uppercase tracking-widest text-secondary/60">Session</span>
+                <span class="text-sm font-bold text-primary">2026-2027</span>
+            </div>
+        </div>
+        <div class="flex items-center space-x-6">
+            <div class="text-right">
+                <div class="text-xs font-bold text-primary font-headline" id="current-date-display">October 24, 2026</div>
+                <div class="inline-flex items-center px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container text-[10px] font-bold uppercase tracking-widest mt-1">
+                    Principal Office
+                </div>
+            </div>
+            <button onclick="localStorage.clear(); window.location.href='index.html'" class="bg-primary text-white px-5 py-2 rounded-md text-sm font-bold academic-gradient hover:opacity-90 transition-all active:scale-[0.98]">
+                Logout
+            </button>
+        </div>
+    </header>
+
+    <div class="flex pt-20">
+        <aside class="fixed left-0 top-0 h-screen flex flex-col py-8 px-4 bg-[#f1f4f6] w-64 z-40 mt-20">
+            <nav class="flex-1 space-y-2">
+                <a class="flex items-center space-x-3 px-4 py-3 bg-[#d5e0f7] text-primary border-l-4 border-primary text-sm font-bold rounded-r-lg" href="#">
+                    <span class="material-symbols-outlined">dashboard</span>
+                    <span>Dashboard</span>
+                </a>
+                <a class="flex items-center space-x-3 px-4 py-3 text-secondary hover:bg-surface-container-high rounded-md text-sm font-medium transition-colors" href="archive.html">
+                    <span class="material-symbols-outlined">inventory_2</span>
+                    <span>Report Archive</span>
+                </a>
+            </nav>
+            <div class="mt-auto px-4 py-4 bg-surface-container-high rounded-xl mb-24">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-xs text-white font-bold">JD</div>
+                    <div class="flex flex-col">
+                        <span class="text-xs font-bold">Dr. C.D. Naidu</span>
+                        <span class="text-[10px] text-secondary/60">Principal</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="ml-64 flex-1 p-10 min-h-screen">
+            <div class="mb-12 flex justify-between items-end">
+                <div>
+                    <h1 class="font-headline text-4xl font-extrabold text-primary tracking-tight mb-2">Institutional Dashboard</h1>
+                    <p class="text-secondary max-w-2xl">Monitor departmental submissions and provide the final executive summary for the daily report.</p>
+                </div>
+                <div class="flex gap-4 items-center">
+                    <input type="date" id="dash-date" class="px-4 py-2 border border-outline-variant rounded-lg text-sm font-bold text-primary">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-12 gap-8">
+                <!-- Tracker -->
+                <section class="col-span-12 lg:col-span-8 space-y-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-headline text-xl font-bold text-primary">Department Submission Tracker</h3>
+                        <span class="text-[10px] font-bold uppercase tracking-widest text-secondary/60" id="stats-display">0 Submitted</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" id="tracker-grid">
+                        <!-- Items injected by JS -->
+                    </div>
+                </section>
+
+                <!-- Executive Summary -->
+                <section class="col-span-12 lg:col-span-4 space-y-8">
+                    <div class="bg-white p-8 rounded-2xl shadow-sm border-l-8 border-primary relative overflow-hidden">
+                        <h3 class="font-headline text-2xl font-bold text-primary mb-2">Executive Summary</h3>
+                        <p class="text-sm text-secondary mb-6">Provide the institutional perspective for the final consolidated report.</p>
+                        
+                        <div class="bg-surface-container-low rounded-xl p-4 min-h-[300px] border border-outline-variant/30 mb-6 focus-within:ring-2 focus-within:ring-primary/10 transition-all">
+                            <div id="summary-editor" contenteditable="true" class="w-full h-full outline-none prose prose-sm text-primary font-body text-sm leading-relaxed" placeholder="Type executive summary here..."></div>
+                        </div>
+
+                        <div class="flex flex-col gap-3">
+                            <div id="save-status" class="text-[10px] font-bold text-secondary/50 uppercase tracking-widest text-center">No changes saved</div>
+                            <button id="save-summary-btn" class="w-full py-4 academic-gradient text-white rounded-xl font-bold flex items-center justify-center space-x-3 shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform">
+                                <span class="material-symbols-outlined">save</span>
+                                <span>Save Summary</span>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Review Modal -->
+    <div id="review-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-primary/20 backdrop-blur-sm" onclick="closeReviewModal()"></div>
+        <div class="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-outline-variant/30 flex flex-col h-[85vh] overflow-hidden">
+            <div class="flex items-center justify-between p-6 border-b bg-white grow-0">
+                <h2 class="font-headline font-bold text-2xl text-primary" id="modal-title">Report Review</h2>
+                <button onclick="closeReviewModal()" class="w-8 h-8 rounded-full hover:bg-surface-container flex items-center justify-center">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-8 prose max-w-none font-body text-sm whitespace-pre-wrap" id="modal-content">
+                <!-- Content -->
+            </div>
+        </div>
+    </div>
+
+    <script src="principal.js"></script>
+</body>
+</html>
