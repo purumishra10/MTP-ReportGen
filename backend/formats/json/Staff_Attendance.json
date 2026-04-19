@@ -1,13 +1,10 @@
 {
-    "departments": [
-        "Staff Attendance"
-    ],
-    "format": [
-        {
-            "section_title": "Unknown Section",
-            "columns": [
-                "Staff Attendance Report on 26-March-2026"
-            ]
-        }
-    ]
+  "department_code": "STAFF_ATTENDANCE",
+  "format": [
+    {
+      "section_title": "Staff Attendance Summary",
+      "columns": ["S.No", "Department", "Teaching Staff Total", "Teaching Present", "Non-Teaching Staff Total", "Non-Teaching Present", "Remarks"],
+      "nil": false
+    }
+  ]
 }

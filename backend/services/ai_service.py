@@ -1,11 +1,12 @@
 import json
 import os
 import re
-from google import genai
+from groq import Groq
 import json_repair
 
-client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL = "gemini-2.5-flash"
+# Initialize Groq client
+client = Groq(api_key=os.getenv("GROQ_API_KEY", os.getenv("GEMINI_API_KEY")))
+MODEL = "llama-3.3-70b-versatile"
 
 SYSTEM_PROMPT = """You are a report consolidation assistant for the Principal's office of VNRVJIET (VNR Vignana Jyothi Institute of Engineering & Technology).
 You receive daily reports from all departments and produce one concise consolidated JSON report.
@@ -270,17 +271,17 @@ def _build_user_message(report_date: str, dept_reports: list[dict]) -> str:
 
 
 def _llm_call(system: str, user: str) -> str:
-    """Call Gemini API and return the text response."""
-    response = client.models.generate_content(
+    """Call Groq API and return the text response."""
+    response = client.chat.completions.create(
         model=MODEL,
-        contents=user,
-        config=genai.types.GenerateContentConfig(
-            system_instruction=system,
-            temperature=0,
-            max_output_tokens=8192,
-        ),
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0,
+        max_tokens=8192,
     )
-    return response.text
+    return response.choices[0].message.content
 
 
 def _parse_json(raw: str, context: str) -> dict | list:

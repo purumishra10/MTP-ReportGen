@@ -31,3 +31,345 @@
     background-color: #c4c6cf;
     border-radius: 10px;
 }
+
+
+/* ═══════════════════════════════════════════════════════════
+   TABLE SECTION CARDS
+   ═══════════════════════════════════════════════════════════ */
+
+.section-card {
+    background: #ffffff;
+    border: 1px solid rgba(196, 198, 207, 0.3);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(24, 28, 30, 0.04), 0 4px 12px rgba(24, 28, 30, 0.02);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.section-card:hover {
+    box-shadow: 0 2px 8px rgba(24, 28, 30, 0.06), 0 8px 24px rgba(24, 28, 30, 0.04);
+}
+
+.section-card.nil-active {
+    opacity: 0.55;
+    background: #f9fafb;
+}
+
+.section-card.nil-active .section-body {
+    display: none !important;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease;
+}
+
+.section-header:hover {
+    background-color: #f9fafb;
+}
+
+.section-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.section-chevron {
+    transition: transform 0.25s ease;
+}
+
+.section-card.collapsed .section-chevron {
+    transform: rotate(-90deg);
+}
+
+.section-card.collapsed .section-body {
+    display: none;
+}
+
+
+/* ═══════════════════════════════════════════
+   NIL TOGGLE
+   ═══════════════════════════════════════════ */
+
+.nil-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid #e2e4e9;
+    background: #f8f9fa;
+    transition: all 0.2s ease;
+    font-size: 12px;
+}
+
+.nil-toggle:hover {
+    border-color: #c4c6cf;
+    background: #eef0f2;
+}
+
+.nil-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #c4c6cf;
+    border-radius: 4px;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.nil-checkbox:checked {
+    background-color: #002045;
+    border-color: #002045;
+}
+
+.nil-checkbox:checked::after {
+    content: "✓";
+    position: absolute;
+    top: -1px;
+    left: 2px;
+    font-size: 11px;
+    font-weight: 700;
+    color: white;
+}
+
+.nil-label {
+    font-weight: 600;
+    color: #43474e;
+    letter-spacing: 0.02em;
+}
+
+
+/* ═══════════════════════════════════════════
+   SECTION BODY & TABLE WRAPPER
+   ═══════════════════════════════════════════ */
+
+.section-body {
+    border-top: 1px solid rgba(196, 198, 207, 0.25);
+    animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    padding: 0;
+}
+
+
+/* ═══════════════════════════════════════════
+   REPORT TABLE
+   ═══════════════════════════════════════════ */
+
+.report-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+    background: #ffffff;
+}
+
+.report-table thead th {
+    background: #ffffff;
+    color: #64748b;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 14px 16px;
+    text-align: left;
+    border-bottom: 2px solid #e2e8f0;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.report-table tbody td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+.report-table tbody tr {
+    transition: background-color 0.15s ease;
+    background-color: #ffffff;
+}
+
+.report-table tbody tr:hover {
+    background-color: #f8fafc;
+}
+
+.report-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* S.No cell */
+.sno-cell {
+    text-align: center;
+    font-weight: 500;
+    color: #94a3b8;
+    font-size: 12px;
+    padding: 12px 16px !important;
+    min-width: 48px;
+}
+
+/* Input cells */
+.report-table input[type="text"],
+.report-table input[type="number"],
+.report-table input[type="date"],
+.report-table textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    outline: none;
+    background: transparent;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: #334155;
+    transition: all 0.2s ease;
+}
+
+.report-table textarea {
+    resize: none;
+    overflow: hidden;
+    min-height: 38px;
+    line-height: 1.4;
+}
+
+.report-table input[type="text"]:hover,
+.report-table input[type="number"]:hover,
+.report-table input[type="date"]:hover,
+.report-table textarea:hover {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+
+.report-table input[type="text"]:focus,
+.report-table input[type="number"]:focus,
+.report-table input[type="date"]:focus,
+.report-table textarea:focus {
+    background-color: #ffffff;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.report-table input::placeholder,
+.report-table textarea::placeholder {
+    color: #cbd5e1;
+    font-style: italic;
+    font-size: 12px;
+}
+
+.report-table input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+.report-table input[type="number"]::-webkit-outer-spin-button,
+.report-table input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* ═══════════════════════════════════════════
+   TABLE ACTIONS (Add / Remove Row)
+   ═══════════════════════════════════════════ */
+
+.table-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #ffffff;
+    border-top: 1px solid #f1f5f9;
+}
+
+.add-row-btn,
+.remove-row-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+}
+
+.add-row-btn {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.add-row-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.remove-row-btn {
+    background: transparent;
+    color: #ef4444;
+}
+
+.remove-row-btn:hover {
+    background: #fef2f2;
+}
+
+/* Editor Placeholder */
+.editor-placeholder:empty:before {
+    content: attr(data-placeholder);
+    color: #94a3b8;
+    pointer-events: none;
+    font-style: italic;
+}
+
+
+/* ═══════════════════════════════════════════
+   SIDEBAR NAV ACTIVE LINK
+   ═══════════════════════════════════════════ */
+
+.nav-link.active {
+    background: #d5e0f7;
+    color: #002045;
+    font-weight: 600;
+    border-left: 3px solid #002045;
+}
+
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════ */
+
+@media (max-width: 1024px) {
+    .table-wrapper {
+        overflow-x: auto;
+    }
+    .report-table {
+        min-width: 600px;
+    }
+}
