@@ -1,0 +1,29 @@
+{
+    "departments": [
+        "Staff Student Attendance"
+    ],
+    "format": [
+        {
+            "section_title": "Student Attendance Report",
+            "columns": [
+                "",
+                "CE",
+                "EEE",
+                "ME",
+                "ECE",
+                "CSE",
+                "EIE",
+                "IT",
+                "AE",
+                "CSBS",
+                "AIML",
+                "DS",
+                "IOT",
+                "CYS",
+                "AIDS",
+                "RAI",
+                "EVL"
+            ]
+        }
+    ]
+}

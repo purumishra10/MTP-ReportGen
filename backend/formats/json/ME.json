@@ -1,0 +1,103 @@
+{
+    "departments": [
+        "ME"
+    ],
+    "format": [
+        {
+            "section_title": "Staff Attendance:",
+            "columns": [
+                "S.No",
+                "Dept.",
+                "Category",
+                "On Rolls",
+                "Absent",
+                "Details/Remarks"
+            ]
+        },
+        {
+            "section_title": "Infrastructure issues or Maintenance:",
+            "columns": [
+                "S.No.",
+                "Description of the problem",
+                "Reported On",
+                "Attended On",
+                "Completed on",
+                "Remarks"
+            ]
+        },
+        {
+            "section_title": "Event (short term course / workshops/Seminar, etc.) organized:",
+            "columns": [
+                "S.No",
+                "Name of the Event-seminar/ short term course / workshops, etc",
+                "Duration",
+                "For Whom",
+                "No. of Participants",
+                "Resource Person/Faculty",
+                "Remarks"
+            ]
+        },
+        {
+            "section_title": "Participation by Staff:",
+            "columns": [
+                "S. No",
+                "Name",
+                "Event",
+                "Status (delegate /paper) Present, speaker)",
+                "Date and Duration"
+            ]
+        },
+        {
+            "section_title": "Participation by Students:",
+            "columns": [
+                "S. No",
+                "Name",
+                "Event",
+                "Status (delegate /paper) Present, speaker)",
+                "Date and Duration"
+            ]
+        },
+        {
+            "section_title": "Staff joined or left",
+            "columns": [
+                "S.No",
+                "Name of the Faculty",
+                "Designation",
+                "Date of joining/leaving",
+                "Remarks"
+            ]
+        },
+        {
+            "section_title": "Classwork\u00a0Adjustment / Lectures Interchanged:",
+            "columns": [
+                "S. No",
+                "Dept",
+                "Subject",
+                "Time",
+                "Adjusted from",
+                "Adjusted to"
+            ]
+        },
+        {
+            "section_title": "Incident if any (Discipline of staff or students, etc.)",
+            "columns": [
+                "S.No",
+                "Name",
+                "R. No. or ID No.",
+                "Brief statement",
+                "Remarks"
+            ]
+        },
+        {
+            "section_title": "9. Industrial training to Teachers/Students/Staff-",
+            "columns": [
+                "S. No.",
+                "Staff/Student",
+                "Industry Visited",
+                "Date of the Visit",
+                "Location of the Industry",
+                "No. of students Visited"
+            ]
+        }
+    ]
+}

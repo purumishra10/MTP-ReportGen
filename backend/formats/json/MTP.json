@@ -1,0 +1,55 @@
+{
+    "departments": [
+        "MTP"
+    ],
+    "format": [
+        {
+            "section_title": "Unknown Section",
+            "columns": [
+                ""
+            ]
+        },
+        {
+            "section_title": "Mentoring, Training & Placements Department",
+            "columns": [
+                "II",
+                "Staff Attendance"
+            ]
+        },
+        {
+            "section_title": "Mentoring, Training & Placements Department",
+            "columns": [
+                "",
+                "III. Students\u2019 Attendance:"
+            ]
+        },
+        {
+            "section_title": "VIII  Classwork\u00a0Adjustment / Lectures Interchanged:",
+            "columns": [
+                "S. No.",
+                "Dept",
+                "Subject",
+                "Adjusted from",
+                "Adjusted to"
+            ]
+        },
+        {
+            "section_title": "IX. Participation by Staff/Students:",
+            "columns": [
+                "S.No",
+                "Name",
+                "Event",
+                "Status (delegate /paper)resent, speaker)",
+                "Date and Duration"
+            ]
+        },
+        {
+            "section_title": "IX. Participation by Staff/Students:",
+            "columns": [
+                "X",
+                "Particulars of Library Services or Transactions:",
+                "No.s"
+            ]
+        }
+    ]
+}
