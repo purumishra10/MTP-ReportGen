@@ -79,6 +79,8 @@ def get_dept_code(filename):
     if "m&ms" in filename or "management" in filename: return "m&ms"
     if "library" in filename: return "library"
     
+    if "attendance" in filename: return "attendance_report"
+    
     # Check others
     for code in DEPT_MAPPING.keys():
         if code in filename:

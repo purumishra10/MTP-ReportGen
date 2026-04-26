@@ -195,8 +195,6 @@ def _pct(val):
     return f"{val:.1f}%"
 
 
-# ── Section builders ──────────────────────────────────────────────────────────
-
 def _build_attendance(doc, report, section_num: int) -> int:
     """Build the staff attendance section (table format)."""
     depts = report.get("attendance", {}).get("departments", [])
@@ -245,7 +243,7 @@ def _build_attendance(doc, report, section_num: int) -> int:
         _set_cell_text(cell, val, bold=True, font_size=9,
                        color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
-    # Library attendance (shown here for completeness, but library details come last)
+    # Library attendance
     lib = report.get("attendance", {}).get("library")
     if lib:
         _add_sub_heading(doc, "Library Staff Attendance")
@@ -257,6 +255,180 @@ def _build_attendance(doc, report, section_num: int) -> int:
             _val(lib.get("on_rolls")), _val(lib.get("absent_with_leave")),
             _val(lib.get("absent_without_leave")), _val(lib.get("present")),
         ], 1)
+
+    return section_num + 1
+
+
+def _build_overall_attendance(doc, report, section_num: int) -> int:
+    """Build a clean staff attendance table: S.No, Dept, Category, On Rolls, Present, Absent, %."""
+    table_data = report.get("overall_staff_attendance_table", [])
+    if not table_data:
+        return _build_attendance(doc, report, section_num)
+
+    _add_section_heading(doc, section_num, "Staff Attendance Report")
+
+    # ── Parse the raw table into structured rows ──────────────────────────
+    # Find the header row (contains "On Rolls" and "Absent")
+    header_idx = None
+    for i, row in enumerate(table_data):
+        row_text = " ".join(str(c).lower() for c in row)
+        if "on rolls" in row_text and "absent" in row_text:
+            header_idx = i
+            break
+
+    if header_idx is None or len(table_data) < header_idx + 2:
+        return section_num + 1
+
+    # Map source columns by header keyword
+    src_header = [str(c).lower().strip() for c in table_data[header_idx]]
+    def _find(kws):
+        for i, h in enumerate(src_header):
+            for kw in kws:
+                if kw in h:
+                    return i
+        return None
+
+    sno_idx = _find(["s.no", "s. no", "sno"])
+    dept_idx = _find(["dept"])
+    cat_idx = _find(["category"])
+    onrolls_idx = _find(["on rolls"])
+    absent_idx = _find(["absent"])
+
+    if onrolls_idx is None or absent_idx is None:
+        return section_num + 1
+
+    # ── Extract data rows and compute Present / % ─────────────────────────
+    import re as _re
+    def _pint(v):
+        s = str(v).strip()
+        if not s or s.lower() in ("", "nil", "-", "—"):
+            return 0
+        m = _re.search(r'\d+', s)
+        return int(m.group()) if m else 0
+
+    parsed_rows = []  # (sno, dept, category, on_rolls, present, absent, pct_str)
+    teach_totals = [0, 0, 0]   # on_rolls, present, absent
+    nonteach_totals = [0, 0, 0]
+
+    for row in table_data[header_idx + 1:]:
+        row_text = " ".join(str(c).lower() for c in row)
+        # Stop before summary/total/note rows
+        if "total" in row_text or "institute" in row_text or "quality" in row_text or "note" in row_text:
+            continue
+        if "teaching" in row_text and "non" not in row_text and dept_idx is not None and not str(row[dept_idx]).strip():
+            continue  # Skip orphan "Teaching" summary if embedded
+
+        sno = str(row[sno_idx]).strip() if sno_idx is not None and sno_idx < len(row) else ""
+        dept = str(row[dept_idx]).strip() if dept_idx is not None and dept_idx < len(row) else ""
+        cat = str(row[cat_idx]).strip() if cat_idx is not None and cat_idx < len(row) else ""
+        on_rolls = _pint(row[onrolls_idx]) if onrolls_idx < len(row) else 0
+        absent = _pint(row[absent_idx]) if absent_idx < len(row) else 0
+
+        if on_rolls == 0 and absent == 0:
+            continue
+
+        present = on_rolls - absent
+        pct = f"{present / on_rolls * 100:.1f}%" if on_rolls > 0 else "—"
+
+        parsed_rows.append((sno, dept, cat, str(on_rolls), str(present), str(absent), pct))
+
+        # Accumulate totals
+        if "non" in cat.lower():
+            nonteach_totals[0] += on_rolls
+            nonteach_totals[1] += present
+            nonteach_totals[2] += absent
+        else:
+            teach_totals[0] += on_rolls
+            teach_totals[1] += present
+            teach_totals[2] += absent
+
+    # Try to get Teaching/Non-Teaching totals from the source summary rows (more accurate)
+    for row in table_data:
+        row_text = " ".join(str(c).lower() for c in row)
+        nums = [_pint(c) for c in row if _re.search(r'\d+', str(c))]
+        if "non" in row_text and "teaching" in row_text and len(nums) >= 3:
+            nonteach_totals = [nums[0], nums[1], nums[2]]
+        elif "teaching" in row_text and "non" not in row_text and len(nums) >= 3:
+            if nums[0] > 100:  # Sanity: total teaching > 100
+                teach_totals = [nums[0], nums[1], nums[2]]
+
+    grand = [teach_totals[i] + nonteach_totals[i] for i in range(3)]
+
+    if not parsed_rows:
+        return section_num + 1
+
+    # ── Build the DOCX table ──────────────────────────────────────────────
+    COLS = ["S.No", "Dept.", "Category", "On Rolls", "Present", "Absent", "%"]
+    num_data_rows = len(parsed_rows)
+    # +1 header, +3 summary (Teaching, Non-Teaching, Grand Total)
+    total_rows = 1 + num_data_rows + 3
+    table = doc.add_table(rows=total_rows, cols=len(COLS))
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+    # Header row
+    for i, col_name in enumerate(COLS):
+        cell = table.rows[0].cells[i]
+        _set_cell_shading(cell, DARK_BLUE_HEX)
+        _set_cell_text(cell, col_name, bold=True, font_size=9, color=WHITE,
+                       alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
+    # Data rows
+    for r, (sno, dept, cat, on_rolls, present, absent, pct) in enumerate(parsed_rows):
+        row_obj = table.rows[1 + r]
+        vals = [sno, dept, cat, on_rolls, present, absent, pct]
+        bg = LIGHT_GRAY_HEX if r % 2 == 0 else "FFFFFF"
+        for i, val in enumerate(vals):
+            cell = row_obj.cells[i]
+            _set_cell_shading(cell, bg)
+            _set_cell_text(cell, val, bold=False, font_size=9, color=BODY_GRAY,
+                           alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
+    # Summary rows
+    summary_data = [
+        ("", "Teaching Total", "", str(teach_totals[0]), str(teach_totals[1]), str(teach_totals[2]),
+         f"{teach_totals[1]/teach_totals[0]*100:.1f}%" if teach_totals[0] > 0 else "—"),
+        ("", "Non-Teaching Total", "", str(nonteach_totals[0]), str(nonteach_totals[1]), str(nonteach_totals[2]),
+         f"{nonteach_totals[1]/nonteach_totals[0]*100:.1f}%" if nonteach_totals[0] > 0 else "—"),
+        ("", "Grand Total", "", str(grand[0]), str(grand[1]), str(grand[2]),
+         f"{grand[1]/grand[0]*100:.1f}%" if grand[0] > 0 else "—"),
+    ]
+
+    for s, summary in enumerate(summary_data):
+        row_obj = table.rows[1 + num_data_rows + s]
+        for i, val in enumerate(summary):
+            cell = row_obj.cells[i]
+            _set_cell_shading(cell, MID_BLUE_HEX)
+            _set_cell_text(cell, val, bold=True, font_size=9, color=WHITE,
+                           alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
+    return section_num + 1
+
+
+def _build_mtp_sections(doc, report, section_num: int) -> int:
+    """Build the MTP highlights and Batch Pills summary sections."""
+    mtp_narrative = report.get("mtp_narrative", "").strip()
+    batch_pills = report.get("mtp_batch_pills", "").strip()
+
+    if not mtp_narrative and not batch_pills:
+        return section_num
+
+    _add_section_heading(doc, section_num, "Mentoring, Training & Placements (MTP)")
+
+    if mtp_narrative:
+        _add_sub_heading(doc, "MTP Highlights (Section IV)")
+        # Clean up narrative (remove [MTP Section IV] label if present)
+        text = mtp_narrative.replace("[MTP Section IV]", "").strip()
+        # If it looks like pipe-delimited table text, it will look bad, but usually it's paragraphs
+        for line in text.split("\n"):
+            if line.strip():
+                _add_body_text(doc, line.strip())
+
+    if batch_pills:
+        _add_sub_heading(doc, "Batch Pills Open Summary")
+        text = batch_pills.replace("[Batch Pills Open Summary]", "").strip()
+        for line in text.split("\n"):
+            if line.strip():
+                _add_body_text(doc, line.strip())
 
     return section_num + 1
 
@@ -710,14 +882,16 @@ def generate_docx(report: dict, output_path: str = None,
     # Order: Attendance → Infrastructure → Dept Highlights → Participation →
     #        Staff Changes → Classwork → Incidents → Library (ALWAYS LAST)
     num = 1
-    num = _build_attendance(doc, report, num)
-    num = _build_infrastructure(doc, report, num)
+    num = _build_overall_attendance(doc, report, num)
+    num = _build_mtp_sections(doc, report, num)
     num = _build_department_highlights(doc, report, num, all_images)
     num = _build_participation(doc, report, num)
     num = _build_staff_changes(doc, report, num)
     num = _build_classwork_adjustments(doc, report, num)
     num = _build_incidents(doc, report, num)
-    num = _build_library(doc, report, num)  # ALWAYS LAST
+    num = _build_library(doc, report, num)
+    num = _build_infrastructure(doc, report, num) # Moved to last
+
 
     # ── Footer note ───────────────────────────────────────────────────────────
     doc.add_paragraph()  # spacing

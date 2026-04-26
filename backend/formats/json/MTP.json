@@ -5,49 +5,30 @@
     "format": [
         {
             "section_title": "Staff Attendance:",
-            "columns": [
-                "S. No.",
-                "Name",
-                "Designation",
-                "On Roll",
-                "Absent with Leave",
-                "Absent Without Leave",
-                "Present",
-                "Remarks"
-            ]
+            "type": "table"
         },
         {
             "section_title": "Students’ Attendance:",
-            "columns": [
-                "S. No.",
-                "Program",
-                "Year",
-                "Strength",
-                "Present",
-                "Absent",
-                "Remarks"
-            ]
+            "type": "table"
+        },
+        {
+            "section_title": "MTP Section:",
+            "type": "narrative"
+        },
+        {
+            "section_title": "Batch Pills Open Summary:",
+            "type": "table_or_narrative"
         },
         {
             "section_title": "Classwork Adjustment / Lectures Interchanged:",
-            "columns": [
-                "S. No.",
-                "Dept",
-                "Subject",
-                "Time",
-                "Adjusted from",
-                "Adjusted to"
-            ]
+            "type": "table"
         },
         {
             "section_title": "Participation by Staff/Students:",
-            "columns": [
-                "S.No",
-                "Name",
-                "Event",
-                "Status",
-                "Date and Duration"
-            ]
+            "type": "table"
         }
+    ],
+    "ignore_sections": [
+        "IV", "V", "VI"
     ]
 }

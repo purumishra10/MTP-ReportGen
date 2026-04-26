@@ -1,8 +1,13 @@
 """
-Deterministic Structured Extractor
-===================================
+Deterministic Structured Extractor (v2)
+========================================
 Reads DOCX tables directly and extracts structured data WITHOUT any LLM.
 Uses header-matching (not position-based indexing) to handle varying table orders.
+
+v2 improvements:
+- Nested table support (critical for MTP Section IV data)
+- Better MTP narrative and Batch Pills extraction
+- Robust cell text normalization
 
 This eliminates number hallucination for: attendance, infrastructure, staff changes,
 classwork adjustments, incidents, and library data.
@@ -35,17 +40,25 @@ FINGERPRINTS = {
     # Library-specific
     "library_transactions": {"particulars", "no"},
     "library_attendance": {"on roll", "absent", "present"},
+    # Overall Attendance report specific
+    "overall_staff_attendance": {"on rolls", "overall performance"},
+    "overall_student_attendance": {"ce", "eee", "me", "ece", "cse"},
+    # MTP specific
+    "mtp_narrative": {"mtp:"},
+    "mtp_batch_pills": {"batch pills"},
 }
 
 # Sections whose data should be extracted deterministically (no LLM)
 DETERMINISTIC_SECTIONS = {
     "attendance", "infrastructure", "staff_changes",
     "classwork", "incidents", "library_transactions", "library_attendance",
+    "overall_staff_attendance", "overall_student_attendance",
 }
 
 # Sections whose data goes to LLM for summarization
 NARRATIVE_SECTIONS = {
     "events", "staff_participation", "student_participation",
+    "mtp_narrative", "mtp_batch_pills",
 }
 
 
@@ -78,6 +91,12 @@ def extract_structured_data(file_bytes: bytes, dept_code: str,
         "library_attendance": None,
         "library_transactions": {},
         "library_services": {},
+        # Overall Attendance (from separate doc)
+        "overall_staff_attendance_table": [],
+        "overall_student_attendance_table": [],
+        # MTP specific
+        "mtp_narrative": "",
+        "mtp_batch_pills": "",
         # Narrative text for LLM
         "events_text": "",
         "staff_participation_text": "",
@@ -115,6 +134,24 @@ def extract_structured_data(file_bytes: bytes, dept_code: str,
             else:
                 result["student_participation_text"] = _table_to_text("Participation by Students", table)
             participation_count += 1
+        elif section_type == "overall_staff_attendance":
+            result["overall_staff_attendance_table"] = _read_table_rows(table)
+        elif section_type == "overall_student_attendance":
+            result["overall_student_attendance_table"] = _read_table_rows(table)
+        elif section_type == "mtp_section_iv":
+            # This is the MTP Section IV table — extract narrative from nested tables
+            mtp_text, pills_text = _extract_mtp_section_iv(table)
+            if mtp_text:
+                result["mtp_narrative"] = mtp_text
+            if pills_text:
+                result["mtp_batch_pills"] = pills_text
+        elif section_type == "mtp_narrative":
+            # Fallback: flat table containing MTP: header
+            if not result["mtp_narrative"]:
+                result["mtp_narrative"] = _table_to_text("MTP Section IV", table)
+        elif section_type == "mtp_batch_pills":
+            if not result["mtp_batch_pills"]:
+                result["mtp_batch_pills"] = _table_to_text("Batch Pills Open Summary", table)
         # Unclassified tables go to "other matters"
         elif section_type == "unknown":
             text = _table_to_text("Other", table)
@@ -132,6 +169,70 @@ def extract_structured_data(file_bytes: bytes, dept_code: str,
     return result
 
 
+# ── MTP Section IV — Nested table extraction ─────────────────────────────────
+
+def _extract_mtp_section_iv(table) -> tuple[str, str]:
+    """
+    Extract MTP Section IV data from a table that contains nested tables.
+    
+    The MTP report has a structure like:
+    Row 0: "III. Students Attendance"
+    Row 1: "IV" | "MTP:" + [nested table with actual narrative + batch pills]
+    
+    Returns: (mtp_narrative_text, batch_pills_text)
+    """
+    mtp_narrative = ""
+    batch_pills = ""
+    
+    for row in table.rows:
+        for cell in row.cells:
+            cell_text = cell.text.strip().lower()
+            
+            # Check if this cell contains nested tables (the MTP data cell)
+            if cell.tables:
+                for nested_table in cell.tables:
+                    nested_rows = _read_table_rows(nested_table)
+                    for nr in nested_rows:
+                        row_text = " ".join(nr).strip()
+                        if not row_text:
+                            continue
+                        
+                        row_lower = row_text.lower()
+                        if "batch" in row_lower and "pli" in row_lower and "summary" in row_lower:
+                            # This row is the Batch Pills header — everything after is pills data
+                            batch_pills = row_text
+                        elif batch_pills:
+                            # We're already past the pills header — append to pills
+                            batch_pills += "\n" + row_text
+                        else:
+                            # This is MTP narrative content
+                            if row_text and len(row_text) > 5:
+                                mtp_narrative += row_text + "\n"
+                    
+                    # Also check nested-nested tables and cell paragraphs
+                    for nrow in nested_table.rows:
+                        for ncell in nrow.cells:
+                            if ncell.tables:
+                                # Handle batch pills table (often nested one more level)
+                                for deep_table in ncell.tables:
+                                    pills_text = _table_to_text("Batch Pills", deep_table)
+                                    if pills_text.strip():
+                                        batch_pills += "\n" + pills_text
+            
+            # Also check non-table cell content for MTP narrative
+            elif "mtp:" in cell_text or "mtp (" in cell_text:
+                # Get all paragraph text from this cell
+                cell_paragraphs = []
+                for p in cell.paragraphs:
+                    t = p.text.strip()
+                    if t and t.lower() != "mtp:" and len(t) > 3:
+                        cell_paragraphs.append(t)
+                if cell_paragraphs:
+                    mtp_narrative += "\n".join(cell_paragraphs)
+    
+    return mtp_narrative.strip(), batch_pills.strip()
+
+
 # ── Table classification ─────────────────────────────────────────────────────
 
 def _classify_tables(tables, is_library: bool) -> list[tuple[str, object]]:
@@ -142,6 +243,12 @@ def _classify_tables(tables, is_library: bool) -> list[tuple[str, object]]:
     for table in tables:
         header_text = _get_header_text(table)
         section_type = _match_fingerprint(header_text, is_library)
+        
+        # Special: detect MTP Section IV table (has "mtp:" AND nested tables)
+        if section_type == "mtp_narrative":
+            has_nested = _table_has_nested_tables(table)
+            if has_nested:
+                section_type = "mtp_section_iv"
 
         # Handle dual participation tables (same headers, different meaning)
         if section_type == "staff_participation":
@@ -154,6 +261,15 @@ def _classify_tables(tables, is_library: bool) -> list[tuple[str, object]]:
         classified.append((section_type, table))
 
     return classified
+
+
+def _table_has_nested_tables(table) -> bool:
+    """Check if any cell in the table contains nested tables."""
+    for row in table.rows:
+        for cell in row.cells:
+            if cell.tables:
+                return True
+    return False
 
 
 def _get_header_text(table) -> str:
@@ -184,12 +300,24 @@ def _match_fingerprint(header_text: str, is_library: bool) -> str:
 
     # Standard attendance — must have On Rolls + Absent + some dept/category indicator
     if "on rolls" in header_text and "absent" in header_text:
+        if "overall performance" in header_text or "overall dqi" in header_text:
+            return "overall_staff_attendance"
         if "category" in header_text or "teaching" in header_text or "dept" in header_text:
             return "attendance"
+
+    # Student Attendance (overall)
+    if "ce" in header_text and "eee" in header_text and "cse" in header_text:
+        return "overall_student_attendance"
 
     # Infrastructure
     if "description" in header_text and ("reported" in header_text or "problem" in header_text):
         return "infrastructure"
+
+    # MTP specific sections — check nested cell text too
+    if "mtp:" in header_text or "mtp (" in header_text:
+        return "mtp_narrative"
+    if "batch pills" in header_text or "batch pli" in header_text:
+        return "mtp_batch_pills"
 
     # Participation BEFORE Events — participation has "status" + "delegate/paper/speaker"
     # but does NOT have "duration" or "participants" or "seminar"

@@ -5,13 +5,24 @@
 ## Structure
 
 ### 1. Staff Attendance
-- **Columns**: S. No., Name, Designation, On Roll, Absent with Leave, Absent Without Leave, Present, Remarks
+- **Format**: Table
 
 ### 2. Students’ Attendance
-- **Columns**: S. No., Program, Year, Strength, Present, Absent, Remarks
+- **Format**: Table (Expected to be mostly empty)
 
-### 3. Classwork Adjustment / Lectures Interchanged
-- **Columns**: S. No., Dept, Subject, Time, Adjusted from, Adjusted to
+### 3. MTP Section (Section IV)
+- **Format**: Narrative / Bullets
+- **Priority**: VERY HIGH (Extract all key information about placements, test links, pre-placement talks, etc.)
 
-### 4. Participation by Staff/Students
-- **Columns**: S.No, Name, Event, Status, Date and Duration
+### 4. Batch Pills Open Summary
+- **Format**: Table / Narrative
+- **Priority**: VERY HIGH
+
+### 5. Classwork Adjustment / Lectures Interchanged
+- **Format**: Table
+
+### 6. Participation by Staff/Students
+- **Format**: Table
+
+### Ignored Sections
+- Columns/Sections between MTP narrative and Batch Pills Summary (typically sections IV part 2, V, VI) are to be ignored.

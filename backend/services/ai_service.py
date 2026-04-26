@@ -1,40 +1,68 @@
 """
-AI Service — Hybrid Consolidation Pipeline
-============================================
+AI Service — Hybrid Consolidation Pipeline (v2)
+=================================================
 Phase 1: Deterministic extraction of structured data (attendance, infra, etc.)
 Phase 2: LLM summarization of narrative sections only (events, participation)
 
+Uses the modern `google-genai` SDK (replaces deprecated `google-generativeai`).
 The LLM NEVER sees numbers for attendance, library, or infrastructure.
 This eliminates number hallucination entirely.
 """
 
-import json
 import os
+import json
 import re
-from groq import Groq
+import time
+from google import genai
+from google.genai import types
 import json_repair
 
-# Initialize Groq client
-client = Groq(api_key=os.getenv("GROQ_API_KEY", os.getenv("GEMINI_API_KEY")))
-MODEL = "llama-3.3-70b-versatile"
+# ── Initialize Gemini client ─────────────────────────────────────────────────
+_api_key = os.getenv("GEMINI_API_KEY")
+_client = None
+
+def _get_client():
+    """Lazy-init the Gemini client."""
+    global _client
+    if _client is None:
+        key = os.getenv("GEMINI_API_KEY") or _api_key
+        if not key:
+            raise RuntimeError("GEMINI_API_KEY not set. Add it to your .env file.")
+        _client = genai.Client(api_key=key)
+    return _client
+
+
+# Model preference order — try faster/cheaper first, fall back if unavailable
+MODEL_CANDIDATES = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+]
 
 
 # ── LLM Prompt — ONLY for narrative summarization ────────────────────────────
 
 SUMMARIZE_SYSTEM_PROMPT = """You are a report summarizer for VNRVJIET (VNR Vignana Jyothi Institute of Engineering & Technology).
 
-You will receive event descriptions, staff/student participation entries, and other matters from department daily reports. Your ONLY job is to summarize and organize this narrative content.
+You will receive event descriptions, staff/student participation entries, MTP (Mentoring, Training & Placements) data, and other matters from department daily reports.
+
+YOUR ONLY JOB: summarize and organize this narrative content faithfully.
 
 STRICT RULES:
-- Every fact must come DIRECTLY from the input. Do not infer, guess, or add anything.
+- Every fact must come DIRECTLY from the input. Do NOT infer, guess, or add anything.
 - Use EXACT WORDS from the source wherever possible.
 - Return ONLY valid JSON. No explanation, no preamble, no markdown fences.
+- DO NOT SKIP ANY EVENT or participation entry. Every single one must be included.
+- For MTP data: ALWAYS include ALL placement drives, pre-placement talks, aptitude tests,
+  batch pill summaries, and any training/placement statistics. This is CRITICAL data.
 
 For each EVENT, extract:
 - "name": exact event name from the source
-- "summary": 1-2 sentence summary using source wording
+- "summary": 1-3 sentence summary using source wording. Include key details like 
+  resource person name, number of participants, venue, outcomes.
 - "importance": "high", "medium", or "low"
-  * HIGH: External events, events with resource persons from industry/academia, events with >50 participants, competitive events, national/international events
+  * HIGH: Placement drives, PPTs, external events, events with resource persons from 
+    industry/academia, events with >50 participants, competitive events, national/international
   * MEDIUM: Internal workshops with 20-50 participants, department-level seminars
   * LOW: Routine internal sessions with <20 participants
 - "date": date string from source
@@ -79,9 +107,9 @@ OUTPUT SCHEMA:
 IMPORTANT:
 - Group events by department.
 - ONLY include a department if it has at least ONE event or noteworthy matter.
-- Skip sections that are completely empty (only "nil", "none", "-", etc.)
-- Combine multiple small similar internal events from the same department.
-- For any numeric field where the value is unclear, use null. Never guess a number."""
+- Skip sections that are completely empty (only "nil"/"none"/"-").
+- For any numeric field where the value is unclear, use null. Never guess a number.
+- MTP department events (placement drives, PPTs) are ALWAYS "high" importance."""
 
 
 def consolidate(report_date: str, dept_data: list[dict]) -> dict:
@@ -100,7 +128,11 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
     final_report = {
         "report_date": report_date,
         "attendance": {"departments": [], "library": None},
+        "overall_staff_attendance_table": [],
+        "overall_student_attendance_table": [],
         "department_highlights": [],
+        "mtp_narrative": "",
+        "mtp_batch_pills": "",
         "staff_participation": [],
         "student_participation": [],
         "staff_changes": [],
@@ -155,6 +187,18 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
         if dept.get("library_services"):
             final_report["library_services"].update(dept["library_services"])
 
+        # Overall Attendance — deterministic (from separate file)
+        if dept.get("overall_staff_attendance_table"):
+            final_report["overall_staff_attendance_table"] = dept["overall_staff_attendance_table"]
+        if dept.get("overall_student_attendance_table"):
+            final_report["overall_student_attendance_table"] = dept["overall_student_attendance_table"]
+
+        # MTP specific deterministic parts
+        if dept.get("mtp_narrative"):
+            final_report["mtp_narrative"] = dept["mtp_narrative"]
+        if dept.get("mtp_batch_pills"):
+            final_report["mtp_batch_pills"] = dept["mtp_batch_pills"]
+
         # ── Collect narrative text for LLM ────────────────────────────────
         narrative_parts = []
         for key in ["events_text", "staff_participation_text",
@@ -206,7 +250,8 @@ def _summarize_narratives(report_date: str, narrative_blocks: list[dict]) -> dic
     user_message = (
         f"Summarize the following department report narrative sections for {report_date}.\n"
         f"Extract events, participation entries, and other matters.\n"
-        f"Skip any section that is entirely empty or contains only 'nil'/'none'/'-'.\n\n"
+        f"Skip any section that is entirely empty or contains only 'nil'/'none'/'-'.\n"
+        f"PAY SPECIAL ATTENTION to MTP/placement related events — they are ALWAYS high importance.\n\n"
         f"{sections}"
     )
 
@@ -237,7 +282,8 @@ def _chunked_summarize(report_date: str, narrative_blocks: list[dict]) -> dict:
         user_message = (
             f"Summarize the following department report narrative sections for {report_date}.\n"
             f"Extract events, participation entries, and other matters.\n"
-            f"Skip any section that is entirely empty or contains only 'nil'/'none'/'-'.\n\n"
+            f"Skip any section that is entirely empty or contains only 'nil'/'none'/'-'.\n"
+            f"PAY SPECIAL ATTENTION to MTP/placement related events.\n\n"
             f"{sections}"
         )
 
@@ -313,17 +359,41 @@ def _remove_empty_sections(report: dict) -> dict:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _llm_call(system: str, user: str) -> str:
-    """Call Groq API and return the text response."""
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=0,
-        max_tokens=8192,
-    )
-    return response.choices[0].message.content
+    """Call Gemini API using the new google-genai SDK with retry and model fallback."""
+    client = _get_client()
+    last_err = None
+
+    for model_name in MODEL_CANDIDATES:
+        for attempt in range(3):  # Retry up to 3 times per model
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=user,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system,
+                        temperature=0,
+                        max_output_tokens=8192,
+                    ),
+                )
+                return response.text
+            except Exception as e:
+                last_err = e
+                err_str = str(e)
+                # Rate limit — wait and retry
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    wait_time = (2 ** attempt) * 5  # 5, 10, 20 seconds
+                    print(f"[RATE_LIMIT] {model_name} attempt {attempt+1}/3 — waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+                # Model not found — try next model
+                elif "404" in err_str or "not found" in err_str.lower():
+                    print(f"[MODEL] {model_name} not available, trying next...")
+                    break
+                # Other error — raise immediately
+                else:
+                    raise
+
+    raise last_err
 
 
 def _parse_json(raw: str, context: str) -> dict | list:
