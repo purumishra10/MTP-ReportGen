@@ -1,0 +1,50 @@
+{
+    "departments": [
+        "Staff & Student Attendance"
+    ],
+    "format": [
+        {
+            "section_title": "Staff Attendance Table:",
+            "columns": [
+                "S.No",
+                "Dept.",
+                "Category",
+                "On Rolls",
+                "Absent",
+                "DQI",
+                "DQI Performance",
+                "Overall DQI",
+                "Overall Performance"
+            ]
+        },
+        {
+            "section_title": "Reasons for Absence:",
+            "columns": [
+                "Sl No",
+                "Name of the Faculty",
+                "Reasons"
+            ]
+        },
+        {
+            "section_title": "Student Attendance Table:",
+            "columns": [
+                "Year",
+                "Particulars",
+                "CE",
+                "EEE",
+                "ME",
+                "ECE",
+                "CSE",
+                "EIE",
+                "IT",
+                "AE",
+                "CSBS",
+                "AIML",
+                "DS",
+                "IOT",
+                "CYS",
+                "AIDS"
+            ]
+        }
+    ]
+}

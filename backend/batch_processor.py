@@ -1,5 +1,15 @@
+"""
+Batch Processor — Process all daily report folders
+====================================================
+Uses the hybrid pipeline:
+1. structured_extractor.py for deterministic data extraction
+2. ai_service.py for narrative summarization only
+3. report_generator.py for DOCX output
+"""
+
 import os
 import re
+import json
 import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
@@ -7,12 +17,12 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-from backend.services.normalizer import normalize, truncate, extract_images
+from backend.services.structured_extractor import extract_structured_data
 from backend.services.ai_service import consolidate
 from backend.services.report_generator import generate_docx
 from backend.services import supabase_client
 
-# Department mapping from main.py
+# Department mapping
 DEPT_MAPPING = {
     "cse":       "Computer Science & Engineering",
     "cys":       "Cyber Security, Data Science & AIDS",
@@ -75,7 +85,13 @@ def get_dept_code(filename):
             return code
     return "unknown"
 
-async def process_day(day_folder_path):
+async def process_day(day_folder_path, dump_json=False):
+    """Process all department reports for a single day.
+    
+    Args:
+        day_folder_path: Path to the day folder (e.g., 'March_2026/24th March 2026')
+        dump_json: If True, save the intermediate consolidated JSON for inspection
+    """
     folder_name = os.path.basename(day_folder_path)
     report_date = parse_date(folder_name)
     
@@ -85,22 +101,28 @@ async def process_day(day_folder_path):
 
     print(f"\n[INFO] Processing Day: {report_date} ({folder_name})")
     
-    files = [f for f in os.listdir(day_folder_path) if f.endswith(('.docx', '.pdf'))]
+    files = [f for f in os.listdir(day_folder_path) if f.endswith(('.docx', '.pdf')) and not f.startswith('~')]
     if not files:
         print(f"[SKIP] No .docx or .pdf files in {folder_name}")
         return
 
-    dept_reports = []
-    all_images = []
+    # ── Phase 1: Deterministic extraction ─────────────────────────────────
+    dept_data = []
+    seen_dept_codes = set()  # Deduplicate
     
-    for filename in files:
+    for filename in sorted(files):
         file_path = os.path.join(day_folder_path, filename)
         dept_code = get_dept_code(filename)
         
         if dept_code == "unknown":
             print(f"[WARN] Could not identify department for: {filename}")
-            # Fallback to filename stem
-            dept_code = os.path.splitext(filename)[0].lower()[:10]
+            continue
+
+        # Skip duplicate department files (e.g., AE has 4 copies)
+        if dept_code in seen_dept_codes:
+            print(f"  [SKIP] Duplicate {dept_code}: {filename}")
+            continue
+        seen_dept_codes.add(dept_code)
 
         is_library = dept_code in LIBRARY_DEPT_CODES
         dept_name = _dept_name_from_code(dept_code)
@@ -109,45 +131,42 @@ async def process_day(day_folder_path):
             with open(file_path, "rb") as f:
                 file_bytes = f.read()
             
-            text = normalize(file_bytes, filename, is_library=is_library)
-            text = truncate(text, max_chars=15000)
+            data = extract_structured_data(file_bytes, dept_code, dept_name, is_library=is_library)
+            dept_data.append(data)
             
-            if text == "[No content extracted]":
-                print(f"[WARN] No text extracted from {filename}")
-                continue
-
-            images = extract_images(file_bytes, filename, dept_code)
-            all_images.extend(images)
-
-            dept_reports.append({
-                "dept_code": dept_code,
-                "dept_name": dept_name,
-                "text": text,
-            })
-            print(f"  [V] Processed: {dept_name} ({filename})")
+            # Print extraction summary
+            att = data.get("attendance") or data.get("library_attendance")
+            att_str = f"on_rolls={att['on_rolls']}" if att else "no-attendance"
+            print(f"  [✓] {dept_name} ({filename}) — {att_str}")
             
         except Exception as e:
-            print(f"  [X] Failed to process {filename}: {e}")
+            print(f"  [✗] Failed to process {filename}: {e}")
 
-    if not dept_reports:
+    if not dept_data:
         print(f"[ERROR] No reports processed for {report_date}")
         return
 
-    # Deduplicate template images
-    if all_images:
-        import hashlib
-        from collections import Counter
-        hash_counts = Counter()
-        for img in all_images:
-            img["_hash"] = hashlib.md5(img["image_bytes"]).hexdigest()
-            hash_counts[img["_hash"]] += 1
-        template_hashes = {h for h, c in hash_counts.items() if c >= 3}
-        all_images = [img for img in all_images if img["_hash"] not in template_hashes]
-
-    # AI Consolidation
-    print(f"[INFO] Running AI consolidation for {report_date}...")
+    # ── Phase 2: AI Consolidation (hybrid) ────────────────────────────────
+    print(f"[INFO] Running hybrid consolidation for {report_date}...")
+    print(f"  Deterministic: {len(dept_data)} departments extracted")
+    
+    narrative_count = sum(1 for d in dept_data 
+                         if any(d.get(k, "").strip() 
+                               for k in ["events_text", "staff_participation_text", 
+                                         "student_participation_text", "other_matters_text"]))
+    print(f"  Narrative (→ LLM): {narrative_count} departments have narrative content")
+    
     try:
-        consolidated = consolidate(report_date, dept_reports)
+        consolidated = consolidate(report_date, dept_data)
+        
+        # Dump intermediate JSON for inspection
+        if dump_json:
+            json_dir = "generated_reports"
+            os.makedirs(json_dir, exist_ok=True)
+            json_path = os.path.join(json_dir, f"consolidated_{report_date}.json")
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(consolidated, f, indent=2, ensure_ascii=False)
+            print(f"[INFO] JSON dump: {json_path}")
         
         # Output setup
         output_dir = "generated_reports"
@@ -155,14 +174,21 @@ async def process_day(day_folder_path):
         filename = f"daily_report_{report_date}.docx"
         output_path = os.path.join(output_dir, filename)
         
-        # DOCX Generation
-        docx_bytes = generate_docx(consolidated, output_path=output_path, all_images=all_images)
+        # DOCX Generation (no images for now)
+        docx_bytes = generate_docx(consolidated, output_path=output_path, all_images=[])
         print(f"[SUCCESS] Generated: {output_path}")
+        
+        # Print summary stats
+        att_depts = consolidated.get("attendance", {}).get("departments", [])
+        events = consolidated.get("department_highlights", [])
+        total_events = sum(len(d.get("events", [])) for d in events) if events else 0
+        print(f"  Stats: {len(att_depts)} departments, {total_events} events, "
+              f"{len(consolidated.get('infrastructure_issues', []))} infra issues")
         
         # Optional: Supabase upload
         if supabase_client.is_enabled():
             try:
-                dept_codes = [r["dept_code"] for r in dept_reports]
+                dept_codes = [d["dept_code"] for d in dept_data]
                 supabase_client.save_report(
                     report_date=report_date,
                     departments=dept_codes,
@@ -175,6 +201,8 @@ async def process_day(day_folder_path):
                 print(f"[WARN] Supabase upload failed: {e}")
                 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"[ERROR] Consolidation failed for {report_date}: {e}")
 
 async def main():
@@ -190,8 +218,13 @@ async def main():
         if os.path.isdir(os.path.join(base_data_dir, d))
     ])
 
+    print(f"[INFO] Found {len(day_folders)} day folders to process")
+    print(f"[INFO] Pipeline: Deterministic extraction + LLM narrative summarization")
+    print(f"[INFO] Images: DISABLED for testing")
+    print()
+    
     for day_folder in day_folders:
-        await process_day(day_folder)
+        await process_day(day_folder, dump_json=True)
 
 if __name__ == "__main__":
     asyncio.run(main())

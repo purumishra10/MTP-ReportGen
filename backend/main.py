@@ -24,7 +24,6 @@ from backend.auth import (
 
 # Services
 from backend.services.ai_service import consolidate
-from backend.services.normalizer import normalize, truncate, extract_images
 from backend.services.report_generator import generate_docx
 from backend.services import supabase_client
 from backend.services.portal_report_service import generate_from_portal
@@ -224,65 +223,46 @@ async def api_consolidate_files(
     report_date: str = Form(...),
     files: List[UploadFile] = File(...),
 ):
-    """Original file upload endpoint."""
+    """File upload endpoint — uses hybrid pipeline (deterministic + LLM)."""
     if not report_date:
         raise HTTPException(status_code=400, detail="report_date is required")
 
     print(f"\n[INFO] Starting consolidation for date: {report_date}")
     print(f"[INFO] Received {len(files)} files")
+    print(f"[INFO] Pipeline: Deterministic extraction + LLM narrative summarization")
 
-    dept_reports = []
-    all_images = []
+    from backend.services.structured_extractor import extract_structured_data
+    from backend.batch_processor import get_dept_code, LIBRARY_DEPT_CODES, _dept_name_from_code
 
-    # Parse each file
+    dept_data = []
+
+    # Parse each file using structured extractor
     for file in files:
         file_bytes = await file.read()
         filename = file.filename
         print(f"  -> Processing file: {filename}")
 
-        from backend.batch_processor import get_dept_code, LIBRARY_DEPT_CODES
         dept_code = get_dept_code(filename)
         if dept_code == "unknown":
             dept_code = os.path.splitext(filename)[0].lower()[:10]
 
         is_library = dept_code in LIBRARY_DEPT_CODES
-        from backend.batch_processor import _dept_name_from_code
         dept_name = _dept_name_from_code(dept_code)
 
         try:
-            text = normalize(file_bytes, filename, is_library=is_library)
-            text = truncate(text, max_chars=15000)
-
-            images = extract_images(file_bytes, filename, dept_code)
-            all_images.extend(images)
-
-            dept_reports.append({
-                "dept_code": dept_code,
-                "dept_name": dept_name,
-                "text": text,
-            })
-            print(f"     [OK] Extracted text ({len(text)} chars) & {len(images)} images")
+            data = extract_structured_data(file_bytes, dept_code, dept_name, is_library=is_library)
+            dept_data.append(data)
+            
+            att = data.get("attendance") or data.get("library_attendance")
+            att_str = f"on_rolls={att['on_rolls']}" if att else "no-attendance"
+            print(f"     [OK] Extracted: {att_str}")
         except Exception as e:
             print(f"     [ERROR] Failed to process {filename}: {e}")
 
-    # Remove duplicate template images
-    if all_images:
-        import hashlib
-        from collections import Counter
-        hash_counts = Counter()
-        for img in all_images:
-            img["_hash"] = hashlib.md5(img["image_bytes"]).hexdigest()
-            hash_counts[img["_hash"]] += 1
-        template_hashes = {h for h, c in hash_counts.items() if c >= 3}
-        all_images = [img for img in all_images if img["_hash"] not in template_hashes]
-
-    # AI Consolidation
+    # Hybrid consolidation (deterministic merge + LLM narrative)
     try:
-        print("[INFO] Calling AI Service for consolidation...")
-        consolidated = consolidate(report_date, dept_reports)
-        
-        # Add a test executive summary (optional fallback if needed)
-        # consolidated["executive_summary"] = "This is a consolidated test from files."
+        print("[INFO] Running hybrid consolidation...")
+        consolidated = consolidate(report_date, dept_data)
 
         output_dir = "generated_reports"
         os.makedirs(output_dir, exist_ok=True)
@@ -290,13 +270,13 @@ async def api_consolidate_files(
         output_path = os.path.join(output_dir, filename_out)
 
         print("[INFO] Generating final DOCX report...")
-        docx_bytes = generate_docx(consolidated, output_path=output_path, all_images=all_images)
+        docx_bytes = generate_docx(consolidated, output_path=output_path, all_images=[])
         print(f"[SUCCESS] Report saved to: {output_path}")
 
         # Supabase upload
         if supabase_client.is_enabled():
             try:
-                dept_codes = [r["dept_code"] for r in dept_reports]
+                dept_codes = [d["dept_code"] for d in dept_data]
                 saved_record = supabase_client.save_report(
                     report_date=report_date,
                     departments=dept_codes,
@@ -322,6 +302,7 @@ async def api_consolidate_files(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Consolidation failed: {str(e)}")
+
 
 
 @app.get("/reports")

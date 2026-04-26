@@ -1,26 +1,17 @@
-# Format Group: MTP
+# MTP (Mentoring, Training & Placements) Daily Report Format
 
-## MTP Section
-|  |
-|---|
+**Priority**: High (T&P data is critical for the final daily report summary).
 
-## Mentoring, Training & Placements Department
-| II | Staff Attendance |
-|---|---|
+## Structure
 
-## Mentoring, Training & Placements Department
-|  | III. Students’ Attendance: |
-|---|---|
+### 1. Staff Attendance
+- **Columns**: S. No., Name, Designation, On Roll, Absent with Leave, Absent Without Leave, Present, Remarks
 
-## VIII  Classwork Adjustment / Lectures Interchanged:
-| S. No. | Dept | Subject | Adjusted from | Adjusted to |
-|---|---|---|---|---|
+### 2. Students’ Attendance
+- **Columns**: S. No., Program, Year, Strength, Present, Absent, Remarks
 
-## IX. Participation by Staff/Students:
-| S.No | Name | Event | Status (delegate /paper)resent, speaker) | Date and Duration |
-|---|---|---|---|---|
+### 3. Classwork Adjustment / Lectures Interchanged
+- **Columns**: S. No., Dept, Subject, Time, Adjusted from, Adjusted to
 
-## IX. Participation by Staff/Students:
-| X | Particulars of Library Services or Transactions: | No.s |
-|---|---|---|
-
+### 4. Participation by Staff/Students
+- **Columns**: S.No, Name, Event, Status, Date and Duration

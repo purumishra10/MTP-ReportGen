@@ -14,11 +14,32 @@
             ]
         },
         {
+            "section_title": "Infrastructure Issues or Maintenance:",
+            "columns": [
+                "S.No.",
+                "Description",
+                "Reported On",
+                "Attended On",
+                "Completed on",
+                "Remarks"
+            ]
+        },
+        {
+            "section_title": "Staff Joined / Left:",
+            "columns": [
+                "S.No",
+                "Name",
+                "Designation",
+                "Date",
+                "Remarks"
+            ]
+        },
+        {
             "section_title": "Library Services or Transactions:",
             "columns": [
                 "S. no.",
                 "Particulars",
-                "No\u2019s"
+                "No’s"
             ]
         }
     ]

@@ -1,0 +1,121 @@
+{
+    "departments": [
+        "Chemistry",
+        "English",
+        "M&MS"
+    ],
+    "format": [
+        {
+            "section_title": "Staff Attendance:",
+            "columns": [
+                "S.No",
+                "Dept.",
+                "Category",
+                "On Rolls",
+                "Absent",
+                "Details/Remarks"
+            ]
+        },
+        {
+            "section_title": "B.Tech Students Attendance:",
+            "columns": [
+                "Year",
+                "Rolls",
+                "Present",
+                "Absent"
+            ]
+        },
+        {
+            "section_title": "M.Tech Students Attendance:",
+            "columns": [
+                "Year",
+                "Rolls",
+                "Present",
+                "Absent"
+            ]
+        },
+        {
+            "section_title": "Minor Degree Students Attendance:",
+            "columns": [
+                "Year",
+                "Rolls",
+                "Present",
+                "Absent"
+            ]
+        },
+        {
+            "section_title": "Infrastructure issues or Maintenance:",
+            "columns": [
+                "S.No.",
+                "Description of the problem",
+                "Reported On",
+                "Attended On",
+                "Completed on",
+                "Remarks"
+            ]
+        },
+        {
+            "section_title": "Event (short term course / workshops/Seminar, etc.) organized:",
+            "columns": [
+                "S.No",
+                "Name of the Event-seminar",
+                "Duration",
+                "For Whom",
+                "No. of Participants",
+                "Resource Person/Faculty",
+                "Remarks"
+            ]
+        },
+        {
+            "section_title": "Participation by Staff:",
+            "columns": [
+                "S. No",
+                "Name",
+                "Event",
+                "Status (delegate /paper) Present, speaker)",
+                "Date and Duration"
+            ]
+        },
+        {
+            "section_title": "Participation by Students:",
+            "columns": [
+                "S. No",
+                "Name",
+                "Event",
+                "Status (delegate /paper) Present, speaker)",
+                "Date and Duration"
+            ]
+        },
+        {
+            "section_title": "Staff joined or left",
+            "columns": [
+                "S.No",
+                "Name",
+                "Designation",
+                "Date of Joining/leaving",
+                "Remarks"
+            ]
+        },
+        {
+            "section_title": "Classwork Adjustment / Lectures Interchanged:",
+            "columns": [
+                "S. No",
+                "Dept",
+                "Subject",
+                "Time",
+                "Adjusted from",
+                "Adjusted to"
+            ]
+        },
+        {
+            "section_title": "Incident if any (Discipline of staff or students, etc.)",
+            "columns": [
+                "S.No",
+                "Name",
+                "R. No. or ID No.",
+                "Brief statement",
+                "Remarks"
+            ]
+        }
+    ]
+}

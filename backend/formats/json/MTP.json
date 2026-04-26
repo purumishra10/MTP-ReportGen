@@ -4,51 +4,49 @@
     ],
     "format": [
         {
-            "section_title": "Unknown Section",
+            "section_title": "Staff Attendance:",
             "columns": [
-                ""
+                "S. No.",
+                "Name",
+                "Designation",
+                "On Roll",
+                "Absent with Leave",
+                "Absent Without Leave",
+                "Present",
+                "Remarks"
             ]
         },
         {
-            "section_title": "Mentoring, Training & Placements Department",
+            "section_title": "Students’ Attendance:",
             "columns": [
-                "II",
-                "Staff Attendance"
+                "S. No.",
+                "Program",
+                "Year",
+                "Strength",
+                "Present",
+                "Absent",
+                "Remarks"
             ]
         },
         {
-            "section_title": "Mentoring, Training & Placements Department",
-            "columns": [
-                "",
-                "III. Students\u2019 Attendance:"
-            ]
-        },
-        {
-            "section_title": "VIII  Classwork\u00a0Adjustment / Lectures Interchanged:",
+            "section_title": "Classwork Adjustment / Lectures Interchanged:",
             "columns": [
                 "S. No.",
                 "Dept",
                 "Subject",
+                "Time",
                 "Adjusted from",
                 "Adjusted to"
             ]
         },
         {
-            "section_title": "IX. Participation by Staff/Students:",
+            "section_title": "Participation by Staff/Students:",
             "columns": [
                 "S.No",
                 "Name",
                 "Event",
-                "Status (delegate /paper)resent, speaker)",
+                "Status",
                 "Date and Duration"
-            ]
-        },
-        {
-            "section_title": "IX. Participation by Staff/Students:",
-            "columns": [
-                "X",
-                "Particulars of Library Services or Transactions:",
-                "No.s"
             ]
         }
     ]
