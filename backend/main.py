@@ -357,6 +357,38 @@ def download_supabase_report(file_path: str):
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
+# --- Format Schema Endpoint ---
+
+@app.get("/api/formats/{dept_code}")
+def get_format_schema(dept_code: str):
+    """Return the JSON format schema for a department so the frontend can build table forms."""
+    import json as json_module
+    formats_dir = os.path.join(os.path.dirname(__file__), "formats", "json")
+    
+    # Try exact match first, then partial match
+    matched_file = None
+    for fname in os.listdir(formats_dir):
+        if not fname.endswith(".json"):
+            continue
+        name_lower = fname.lower().replace(".json", "")
+        code_lower = dept_code.lower().replace(" ", "_").replace("-", "_").replace("&", "_")
+        if code_lower in name_lower or name_lower.startswith(code_lower):
+            matched_file = os.path.join(formats_dir, fname)
+            break
+    
+    if not matched_file:
+        # Fallback: return CSE format as default
+        fallback = os.path.join(formats_dir, "Civil_CSE_CSE__CyS__DS__and_AI_DS_ECE_IT_DEPT__format_for_CSE____CyS__DS__and_AI_DS.json")
+        if os.path.exists(fallback):
+            matched_file = fallback
+        else:
+            raise HTTPException(status_code=404, detail=f"Format not found for department: {dept_code}")
+    
+    with open(matched_file, "r", encoding="utf-8") as f:
+        schema = json_module.load(f)
+    
+    return schema
+
 
 # --- Static Frontend Serving ---
 
