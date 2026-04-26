@@ -130,6 +130,7 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
         "attendance": {"departments": [], "library": None},
         "overall_staff_attendance_table": [],
         "overall_student_attendance_table": [],
+        "attendance_charts": [],
         "department_highlights": [],
         "mtp_narrative": "",
         "mtp_batch_pills": "",
@@ -148,6 +149,10 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
     for dept in dept_data:
         dept_code = dept["dept_code"]
         dept_name = dept["dept_name"]
+
+        # Attendance charts
+        if dept.get("attendance_charts"):
+            final_report["attendance_charts"].extend(dept["attendance_charts"])
 
         # Attendance — deterministic
         if dept.get("attendance"):

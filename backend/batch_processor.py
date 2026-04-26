@@ -134,6 +134,14 @@ async def process_day(day_folder_path, dump_json=False):
                 file_bytes = f.read()
             
             data = extract_structured_data(file_bytes, dept_code, dept_name, is_library=is_library)
+            
+            if dept_code == "attendance_report":
+                from backend.services.chart_extractor import extract_charts_from_docx
+                print(f"  [INFO] Extracting charts from {filename}...")
+                charts = extract_charts_from_docx(file_path, "scratch")
+                data["attendance_charts"] = charts
+                print(f"  [OK] Extracted {len(charts)} charts")
+
             dept_data.append(data)
             
             # Print extraction summary

@@ -5,6 +5,7 @@ Events and other matters are grouped by department with inline images.
 """
 
 import io
+import os
 from datetime import datetime
 from docx import Document
 from docx.shared import Inches, Pt, Cm, RGBColor
@@ -260,173 +261,109 @@ def _build_attendance(doc, report, section_num: int) -> int:
 
 
 def _build_overall_attendance(doc, report, section_num: int) -> int:
-    """Build a clean staff attendance table: S.No, Dept, Category, On Rolls, Present, Absent, %."""
+    """Build a clean staff attendance summary table and student attendance table, including charts if available."""
     table_data = report.get("overall_staff_attendance_table", [])
     if not table_data:
         return _build_attendance(doc, report, section_num)
 
-    _add_section_heading(doc, section_num, "Staff Attendance Report")
+    _add_section_heading(doc, section_num, "Staff & Student Attendance Report")
+    _add_sub_heading(doc, "Staff Attendance Summary")
 
-    # ── Parse the raw table into structured rows ──────────────────────────
-    # Find the header row (contains "On Rolls" and "Absent")
-    header_idx = None
-    for i, row in enumerate(table_data):
+    # Extract summary rows
+    inst_iqi = ""
+    inst_remark = ""
+    teach_data = []
+    nonteach_data = []
+
+    for row in table_data[-10:]:
         row_text = " ".join(str(c).lower() for c in row)
-        if "on rolls" in row_text and "absent" in row_text:
-            header_idx = i
-            break
+        nums = [c for c in row if str(c).strip().replace('.', '').isdigit()]
+        remarks = [c for c in row if str(c).strip() in ("Good", "Excellent", "Satisfactory", "Poor")]
+        
+        if "institute" in row_text and "quality" in row_text:
+            if len(nums) > 0: inst_iqi = nums[-1]
+            if len(remarks) > 0: inst_remark = remarks[-1]
+        elif "teaching" in row_text and "non" not in row_text:
+            teach_data = nums[:4] + [remarks[-1] if remarks else ""]
+        elif "non" in row_text and "teaching" in row_text:
+            nonteach_data = nums[:4] + [remarks[-1] if remarks else ""]
 
-    if header_idx is None or len(table_data) < header_idx + 2:
-        return section_num + 1
+    if inst_iqi:
+        _add_body_text(doc, f"Institute Quality Index (IQI): {inst_iqi} ({inst_remark})", bold_prefix=f"Institute Quality Index (IQI): {inst_iqi} ({inst_remark})")
 
-    # Map source columns by header keyword
-    src_header = [str(c).lower().strip() for c in table_data[header_idx]]
-    def _find(kws):
-        for i, h in enumerate(src_header):
-            for kw in kws:
-                if kw in h:
-                    return i
-        return None
-
-    sno_idx = _find(["s.no", "s. no", "sno"])
-    dept_idx = _find(["dept"])
-    cat_idx = _find(["category"])
-    onrolls_idx = _find(["on rolls"])
-    absent_idx = _find(["absent"])
-
-    if onrolls_idx is None or absent_idx is None:
-        return section_num + 1
-
-    # ── Extract data rows and compute Present / % ─────────────────────────
-    import re as _re
-    def _pint(v):
-        s = str(v).strip()
-        if not s or s.lower() in ("", "nil", "-", "—"):
-            return 0
-        m = _re.search(r'\d+', s)
-        return int(m.group()) if m else 0
-
-    parsed_rows = []  # (sno, dept, category, on_rolls, present, absent, pct_str)
-    teach_totals = [0, 0, 0]   # on_rolls, present, absent
-    nonteach_totals = [0, 0, 0]
-
-    for row in table_data[header_idx + 1:]:
-        row_text = " ".join(str(c).lower() for c in row)
-        # Stop before summary/total/note rows
-        if "total" in row_text or "institute" in row_text or "quality" in row_text or "note" in row_text:
-            continue
-        if "teaching" in row_text and "non" not in row_text and dept_idx is not None and not str(row[dept_idx]).strip():
-            continue  # Skip orphan "Teaching" summary if embedded
-
-        sno = str(row[sno_idx]).strip() if sno_idx is not None and sno_idx < len(row) else ""
-        dept = str(row[dept_idx]).strip() if dept_idx is not None and dept_idx < len(row) else ""
-        cat = str(row[cat_idx]).strip() if cat_idx is not None and cat_idx < len(row) else ""
-        on_rolls = _pint(row[onrolls_idx]) if onrolls_idx < len(row) else 0
-        absent = _pint(row[absent_idx]) if absent_idx < len(row) else 0
-
-        if on_rolls == 0 and absent == 0:
-            continue
-
-        present = on_rolls - absent
-        pct = f"{present / on_rolls * 100:.1f}%" if on_rolls > 0 else "—"
-
-        parsed_rows.append((sno, dept, cat, str(on_rolls), str(present), str(absent), pct))
-
-        # Accumulate totals
-        if "non" in cat.lower():
-            nonteach_totals[0] += on_rolls
-            nonteach_totals[1] += present
-            nonteach_totals[2] += absent
-        else:
-            teach_totals[0] += on_rolls
-            teach_totals[1] += present
-            teach_totals[2] += absent
-
-    # Try to get Teaching/Non-Teaching totals from the source summary rows (more accurate)
-    for row in table_data:
-        row_text = " ".join(str(c).lower() for c in row)
-        nums = [_pint(c) for c in row if _re.search(r'\d+', str(c))]
-        if "non" in row_text and "teaching" in row_text and len(nums) >= 3:
-            nonteach_totals = [nums[0], nums[1], nums[2]]
-        elif "teaching" in row_text and "non" not in row_text and len(nums) >= 3:
-            if nums[0] > 100:  # Sanity: total teaching > 100
-                teach_totals = [nums[0], nums[1], nums[2]]
-
-    grand = [teach_totals[i] + nonteach_totals[i] for i in range(3)]
-
-    if not parsed_rows:
-        return section_num + 1
-
-    # ── Build the DOCX table ──────────────────────────────────────────────
-    COLS = ["S.No", "Dept.", "Category", "On Rolls", "Present", "Absent", "%"]
-    num_data_rows = len(parsed_rows)
-    # +1 header, +3 summary (Teaching, Non-Teaching, Grand Total)
-    total_rows = 1 + num_data_rows + 3
-    table = doc.add_table(rows=total_rows, cols=len(COLS))
+    # Build Summary Table
+    COLS = ["Category", "On Rolls", "Present", "Absent", "IQI", "Remark"]
+    table = doc.add_table(rows=3, cols=len(COLS))
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
-    # Header row
+    # Header
     for i, col_name in enumerate(COLS):
         cell = table.rows[0].cells[i]
         _set_cell_shading(cell, DARK_BLUE_HEX)
-        _set_cell_text(cell, col_name, bold=True, font_size=9, color=WHITE,
-                       alignment=WD_ALIGN_PARAGRAPH.CENTER)
+        _set_cell_text(cell, col_name, bold=True, font_size=9, color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
-    # Data rows
-    for r, (sno, dept, cat, on_rolls, present, absent, pct) in enumerate(parsed_rows):
-        row_obj = table.rows[1 + r]
-        vals = [sno, dept, cat, on_rolls, present, absent, pct]
-        bg = LIGHT_GRAY_HEX if r % 2 == 0 else "FFFFFF"
-        for i, val in enumerate(vals):
+    def _add_summary_row(row_idx, label, data):
+        row_obj = table.rows[row_idx]
+        vals = [label] + [str(x) for x in data]
+        while len(vals) < len(COLS): vals.append("")
+        for i, val in enumerate(vals[:len(COLS)]):
             cell = row_obj.cells[i]
-            _set_cell_shading(cell, bg)
-            _set_cell_text(cell, val, bold=False, font_size=9, color=BODY_GRAY,
-                           alignment=WD_ALIGN_PARAGRAPH.CENTER)
+            _set_cell_shading(cell, LIGHT_GRAY_HEX if row_idx % 2 == 0 else "FFFFFF")
+            _set_cell_text(cell, val, bold=False, font_size=9, color=BODY_GRAY, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
-    # Merge vertical cells for same S.No (col 0) and Dept (col 1)
-    for col_idx in [0, 1]:
-        start_r = 0
-        while start_r < num_data_rows:
-            end_r = start_r
-            # Check consecutive rows that share the same S.No and Dept
-            while (end_r + 1 < num_data_rows and 
-                   parsed_rows[end_r + 1][col_idx] == parsed_rows[start_r][col_idx] and 
-                   parsed_rows[end_r + 1][1] == parsed_rows[start_r][1]):
-                end_r += 1
-                
-            if end_r > start_r:
-                top_cell = table.cell(1 + start_r, col_idx)
-                bottom_cell = table.cell(1 + end_r, col_idx)
-                top_cell.merge(bottom_cell)
-                # Merging appends text from the bottom cell; we need to reset it
-                top_cell.text = ""
-                _set_cell_text(top_cell, parsed_rows[start_r][col_idx], bold=False, font_size=9, color=BODY_GRAY,
-                               alignment=WD_ALIGN_PARAGRAPH.CENTER)
-                # Keep the shading of the first row in the merged block
-                bg = LIGHT_GRAY_HEX if start_r % 2 == 0 else "FFFFFF"
-                _set_cell_shading(top_cell, bg)
-                
-            start_r = end_r + 1
+    if teach_data: _add_summary_row(1, "Teaching", teach_data)
+    if nonteach_data: _add_summary_row(2, "Non-Teaching", nonteach_data)
 
-    # Summary rows
-    summary_data = [
-        ("", "Teaching Total", "", str(teach_totals[0]), str(teach_totals[1]), str(teach_totals[2]),
-         f"{teach_totals[1]/teach_totals[0]*100:.1f}%" if teach_totals[0] > 0 else "—"),
-        ("", "Non-Teaching Total", "", str(nonteach_totals[0]), str(nonteach_totals[1]), str(nonteach_totals[2]),
-         f"{nonteach_totals[1]/nonteach_totals[0]*100:.1f}%" if nonteach_totals[0] > 0 else "—"),
-        ("", "Grand Total", "", str(grand[0]), str(grand[1]), str(grand[2]),
-         f"{grand[1]/grand[0]*100:.1f}%" if grand[0] > 0 else "—"),
-    ]
+    # Add Staff Chart if available
+    charts = report.get("attendance_charts", [])
+    if len(charts) > 0 and os.path.exists(charts[0]):
+        doc.add_picture(charts[0], width=Inches(6.0))
+        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    for s, summary in enumerate(summary_data):
-        row_obj = table.rows[1 + num_data_rows + s]
-        for i, val in enumerate(summary):
-            cell = row_obj.cells[i]
-            _set_cell_shading(cell, MID_BLUE_HEX)
-            _set_cell_text(cell, val, bold=True, font_size=9, color=WHITE,
-                           alignment=WD_ALIGN_PARAGRAPH.CENTER)
+    # Build Student Attendance Table
+    _build_student_attendance(doc, report)
+
+    # Add Student Chart if available
+    if len(charts) > 1 and os.path.exists(charts[1]):
+        doc.add_picture(charts[1], width=Inches(6.0))
+        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     return section_num + 1
+
+
+def _build_student_attendance(doc, report):
+    """Build the student attendance table from raw data."""
+    student_table = report.get("overall_student_attendance_table", [])
+    if not student_table:
+        return
+
+    _add_sub_heading(doc, "Student Attendance Report")
+    
+    # We render the table exactly as it is, since it has variable lengths
+    # Find max columns
+    max_cols = max((len(r) for r in student_table), default=0)
+    if max_cols == 0:
+        return
+        
+    table = doc.add_table(rows=len(student_table), cols=max_cols)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.style = 'Table Grid'
+
+    for r, row_data in enumerate(student_table):
+        row_obj = table.rows[r]
+        for c, val in enumerate(row_data):
+            if c < max_cols:
+                cell = row_obj.cells[c]
+                is_header = (r == 0)
+                # Shading: dark blue for header, alternate for body
+                if is_header:
+                    _set_cell_shading(cell, DARK_BLUE_HEX)
+                else:
+                    _set_cell_shading(cell, LIGHT_GRAY_HEX if r % 2 == 0 else "FFFFFF")
+                
+                color = WHITE if is_header else BODY_GRAY
+                _set_cell_text(cell, str(val), bold=is_header, font_size=8, color=color, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
 
 
 def _build_mtp_sections(doc, report, section_num: int) -> int:

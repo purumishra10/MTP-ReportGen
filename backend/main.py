@@ -251,6 +251,19 @@ async def api_consolidate_files(
 
         try:
             data = extract_structured_data(file_bytes, dept_code, dept_name, is_library=is_library)
+            
+            # If it's the attendance report, extract its charts using win32com
+            if "attendance" in filename.lower():
+                temp_path = os.path.join("scratch", f"temp_{filename}")
+                os.makedirs("scratch", exist_ok=True)
+                with open(temp_path, "wb") as f:
+                    f.write(file_bytes)
+                from backend.services.chart_extractor import extract_charts_from_docx
+                print("     [INFO] Extracting charts from attendance report...")
+                charts = extract_charts_from_docx(temp_path, "scratch")
+                data["attendance_charts"] = charts
+                print(f"     [OK] Extracted {len(charts)} charts")
+
             dept_data.append(data)
             
             att = data.get("attendance") or data.get("library_attendance")

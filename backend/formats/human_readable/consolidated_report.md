@@ -20,15 +20,18 @@
 
 ---
 
-## Staff Attendance Table (Section 1)
+## Staff & Student Attendance (Section 1)
 
-**Columns**: S.No · Dept. · Category · On Rolls · Present · Absent · %
+**Visual & Summary Reporting**:
+- **Staff Attendance Summary**: A 3-row summary table (Teaching, Non-Teaching, Institute Total) with IQI metrics and Remarks.
+- **Staff Bar Graph**: Embedded bar chart extracted from the source report.
+- **Student Attendance Table**: Department-wise attendance breakdown across all B.Tech years.
+- **Student Bar Graph**: Embedded bar chart extracted from the source report.
 
-- **Present** = On Rolls − Absent (computed, not from source)
-- **%** = Present / On Rolls × 100 (computed)
-- **DQI / Performance columns**: EXCLUDED
-- **Student attendance**: EXCLUDED
-- **Summary rows**: Teaching Total, Non-Teaching Total, Grand Total
+**Calculation Rules**:
+- **Staff Summary**: Extracted from the bottom summary rows of the attendance report.
+- **Deterministic**: Bar graphs are extracted as PNGs using `win32com` during processing.
+- **EXCLUDED**: Detailed 45-row staff attendance table is removed for brevity.
 
 ---
 
