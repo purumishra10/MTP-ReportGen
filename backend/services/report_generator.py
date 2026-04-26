@@ -383,6 +383,31 @@ def _build_overall_attendance(doc, report, section_num: int) -> int:
             _set_cell_text(cell, val, bold=False, font_size=9, color=BODY_GRAY,
                            alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
+    # Merge vertical cells for same S.No (col 0) and Dept (col 1)
+    for col_idx in [0, 1]:
+        start_r = 0
+        while start_r < num_data_rows:
+            end_r = start_r
+            # Check consecutive rows that share the same S.No and Dept
+            while (end_r + 1 < num_data_rows and 
+                   parsed_rows[end_r + 1][col_idx] == parsed_rows[start_r][col_idx] and 
+                   parsed_rows[end_r + 1][1] == parsed_rows[start_r][1]):
+                end_r += 1
+                
+            if end_r > start_r:
+                top_cell = table.cell(1 + start_r, col_idx)
+                bottom_cell = table.cell(1 + end_r, col_idx)
+                top_cell.merge(bottom_cell)
+                # Merging appends text from the bottom cell; we need to reset it
+                top_cell.text = ""
+                _set_cell_text(top_cell, parsed_rows[start_r][col_idx], bold=False, font_size=9, color=BODY_GRAY,
+                               alignment=WD_ALIGN_PARAGRAPH.CENTER)
+                # Keep the shading of the first row in the merged block
+                bg = LIGHT_GRAY_HEX if start_r % 2 == 0 else "FFFFFF"
+                _set_cell_shading(top_cell, bg)
+                
+            start_r = end_r + 1
+
     # Summary rows
     summary_data = [
         ("", "Teaching Total", "", str(teach_totals[0]), str(teach_totals[1]), str(teach_totals[2]),
