@@ -1,26 +1,28 @@
-# Format Group: MTP
+# MTP (Mentoring, Training & Placements) Daily Report Format
 
-## MTP Section
-|  |
-|---|
+**Priority**: High (T&P data is critical for the final daily report summary).
 
-## Mentoring, Training & Placements Department
-| II | Staff Attendance |
-|---|---|
+## Structure
 
-## MeIII. Students’ Attendance: ntoring, Training & Placements Department
-|  | |
-|---|---|
+### 1. Staff Attendance
+- **Format**: Table
 
-## VIII  Classwork Adjustment / Lectures Interchanged:
-| S. No. | Dept | Subject | Adjusted from | Adjusted to |
-|---|---|---|---|---|
+### 2. Students’ Attendance
+- **Format**: Table (Expected to be mostly empty)
 
-## IX. Participation by Staff/Students:
-| S.No | Name | Event | Status (delegate /paper)resent, speaker) | Date and Duration |
-|---|---|---|---|---|
+### 3. MTP Section (Section IV)
+- **Format**: Narrative / Bullets
+- **Priority**: VERY HIGH (Extract all key information about placements, test links, pre-placement talks, etc.)
 
-## IX. Participation by Staff/Students:
-| X | Particulars of Library Services or Transactions: | No.s |
-|---|---|---|
+### 4. Batch Pills Open Summary
+- **Format**: Table / Narrative
+- **Priority**: VERY HIGH
 
+### 5. Classwork Adjustment / Lectures Interchanged
+- **Format**: Table
+
+### 6. Participation by Staff/Students
+- **Format**: Table
+
+### Ignored Sections
+- Columns/Sections between MTP narrative and Batch Pills Summary (typically sections IV part 2, V, VI) are to be ignored.
