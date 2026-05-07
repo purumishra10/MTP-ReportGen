@@ -1,15 +1,46 @@
 {
-  "department_code": "LIBRARY",
-  "format": [
-    {
-      "section_title": "Staff Attendance",
-      "columns": ["S.No", "On Roll", "Absent with Leave", "Absent Without Leave", "Present", "Remarks"],
-      "nil": false
-    },
-    {
-      "section_title": "Library Services or Transactions",
-      "columns": ["S.No", "Particulars", "No's"],
-      "nil": false
-    }
-  ]
+    "departments": [
+        "Library"
+    ],
+    "format": [
+        {
+            "section_title": "Staff Attendance:",
+            "columns": [
+                "On Roll",
+                "Absent with Leave",
+                "Absent Without Leave",
+                "Present",
+                "Remarks"
+            ]
+        },
+        {
+            "section_title": "Infrastructure Issues or Maintenance:",
+            "columns": [
+                "S.No.",
+                "Description",
+                "Reported On",
+                "Attended On",
+                "Completed on",
+                "Remarks"
+            ]
+        },
+        {
+            "section_title": "Staff Joined / Left:",
+            "columns": [
+                "S.No",
+                "Name",
+                "Designation",
+                "Date",
+                "Remarks"
+            ]
+        },
+        {
+            "section_title": "Library Services or Transactions:",
+            "columns": [
+                "S. no.",
+                "Particulars",
+                "No’s"
+            ]
+        }
+    ]
 }

@@ -1,30 +1,34 @@
 {
-  "department_code": "MTP",
-  "format": [
-    {
-      "section_title": "Staff Attendance",
-      "columns": ["S.No", "Name", "Role", "Attendance Status", "Remarks"],
-      "nil": false
-    },
-    {
-      "section_title": "Students' Attendance",
-      "columns": ["S.No", "Program / Batch", "Total Strength", "Present", "Absent"],
-      "nil": false
-    },
-    {
-      "section_title": "Classwork Adjustment / Lectures Interchanged",
-      "columns": ["S.No", "Dept", "Subject", "Adjusted from", "Adjusted to"],
-      "nil": false
-    },
-    {
-      "section_title": "Participation by Staff/Students",
-      "columns": ["S.No", "Name", "Event", "Status", "Date and Duration"],
-      "nil": false
-    },
-    {
-      "section_title": "Mentoring / Training Information",
-      "columns": ["S.No", "Training Program", "Target Audience", "Status / Remarks"],
-      "nil": false
-    }
-  ]
+    "departments": [
+        "MTP"
+    ],
+    "format": [
+        {
+            "section_title": "Staff Attendance:",
+            "type": "table"
+        },
+        {
+            "section_title": "Students’ Attendance:",
+            "type": "table"
+        },
+        {
+            "section_title": "MTP Section:",
+            "type": "narrative"
+        },
+        {
+            "section_title": "Batch Pills Open Summary:",
+            "type": "table_or_narrative"
+        },
+        {
+            "section_title": "Classwork Adjustment / Lectures Interchanged:",
+            "type": "table"
+        },
+        {
+            "section_title": "Participation by Staff/Students:",
+            "type": "table"
+        }
+    ],
+    "ignore_sections": [
+        "IV", "V", "VI"
+    ]
 }

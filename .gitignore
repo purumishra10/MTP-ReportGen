@@ -9,6 +9,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 generated_reports/
+scratch/
 build/
 develop-eggs/
 dist/

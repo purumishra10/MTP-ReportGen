@@ -5,6 +5,7 @@ Events and other matters are grouped by department with inline images.
 """
 
 import io
+import os
 from datetime import datetime
 from docx import Document
 from docx.shared import Inches, Pt, Cm, RGBColor
@@ -195,8 +196,6 @@ def _pct(val):
     return f"{val:.1f}%"
 
 
-# ── Section builders ──────────────────────────────────────────────────────────
-
 def _build_attendance(doc, report, section_num: int) -> int:
     """Build the staff attendance section (table format)."""
     depts = report.get("attendance", {}).get("departments", [])
@@ -245,7 +244,7 @@ def _build_attendance(doc, report, section_num: int) -> int:
         _set_cell_text(cell, val, bold=True, font_size=9,
                        color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
-    # Library attendance (shown here for completeness, but library details come last)
+    # Library attendance
     lib = report.get("attendance", {}).get("library")
     if lib:
         _add_sub_heading(doc, "Library Staff Attendance")
@@ -257,6 +256,141 @@ def _build_attendance(doc, report, section_num: int) -> int:
             _val(lib.get("on_rolls")), _val(lib.get("absent_with_leave")),
             _val(lib.get("absent_without_leave")), _val(lib.get("present")),
         ], 1)
+
+    return section_num + 1
+
+
+def _build_overall_attendance(doc, report, section_num: int) -> int:
+    """Build a clean staff attendance summary table and student attendance table, including charts if available."""
+    table_data = report.get("overall_staff_attendance_table", [])
+    if not table_data:
+        return _build_attendance(doc, report, section_num)
+
+    _add_section_heading(doc, section_num, "Staff & Student Attendance Report")
+    _add_sub_heading(doc, "Staff Attendance Summary")
+
+    # Extract summary rows
+    inst_iqi = ""
+    inst_remark = ""
+    teach_data = []
+    nonteach_data = []
+
+    for row in table_data[-10:]:
+        row_text = " ".join(str(c).lower() for c in row)
+        nums = [c for c in row if str(c).strip().replace('.', '').isdigit()]
+        remarks = [c for c in row if str(c).strip() in ("Good", "Excellent", "Satisfactory", "Poor")]
+        
+        if "institute" in row_text and "quality" in row_text:
+            if len(nums) > 0: inst_iqi = nums[-1]
+            if len(remarks) > 0: inst_remark = remarks[-1]
+        elif "teaching" in row_text and "non" not in row_text:
+            teach_data = nums[:4] + [remarks[-1] if remarks else ""]
+        elif "non" in row_text and "teaching" in row_text:
+            nonteach_data = nums[:4] + [remarks[-1] if remarks else ""]
+
+    if inst_iqi:
+        _add_body_text(doc, f"Institute Quality Index (IQI): {inst_iqi} ({inst_remark})", bold_prefix=f"Institute Quality Index (IQI): {inst_iqi} ({inst_remark})")
+
+    # Build Summary Table
+    COLS = ["Category", "On Rolls", "Present", "Absent", "IQI", "Remark"]
+    table = doc.add_table(rows=3, cols=len(COLS))
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+    # Header
+    for i, col_name in enumerate(COLS):
+        cell = table.rows[0].cells[i]
+        _set_cell_shading(cell, DARK_BLUE_HEX)
+        _set_cell_text(cell, col_name, bold=True, font_size=9, color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
+    def _add_summary_row(row_idx, label, data):
+        row_obj = table.rows[row_idx]
+        vals = [label] + [str(x) for x in data]
+        while len(vals) < len(COLS): vals.append("")
+        for i, val in enumerate(vals[:len(COLS)]):
+            cell = row_obj.cells[i]
+            _set_cell_shading(cell, LIGHT_GRAY_HEX if row_idx % 2 == 0 else "FFFFFF")
+            _set_cell_text(cell, val, bold=False, font_size=9, color=BODY_GRAY, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
+    if teach_data: _add_summary_row(1, "Teaching", teach_data)
+    if nonteach_data: _add_summary_row(2, "Non-Teaching", nonteach_data)
+
+    # Add Staff Chart if available
+    charts = report.get("attendance_charts", [])
+    if len(charts) > 0 and os.path.exists(charts[0]):
+        doc.add_picture(charts[0], width=Inches(6.0))
+        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # Build Student Attendance Table
+    _build_student_attendance(doc, report)
+
+    # Add Student Chart if available
+    if len(charts) > 1 and os.path.exists(charts[1]):
+        doc.add_picture(charts[1], width=Inches(6.0))
+        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    return section_num + 1
+
+
+def _build_student_attendance(doc, report):
+    """Build the student attendance table from raw data."""
+    student_table = report.get("overall_student_attendance_table", [])
+    if not student_table:
+        return
+
+    _add_sub_heading(doc, "Student Attendance Report")
+    
+    # We render the table exactly as it is, since it has variable lengths
+    # Find max columns
+    max_cols = max((len(r) for r in student_table), default=0)
+    if max_cols == 0:
+        return
+        
+    table = doc.add_table(rows=len(student_table), cols=max_cols)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.style = 'Table Grid'
+
+    for r, row_data in enumerate(student_table):
+        row_obj = table.rows[r]
+        for c, val in enumerate(row_data):
+            if c < max_cols:
+                cell = row_obj.cells[c]
+                is_header = (r == 0)
+                # Shading: dark blue for header, alternate for body
+                if is_header:
+                    _set_cell_shading(cell, DARK_BLUE_HEX)
+                else:
+                    _set_cell_shading(cell, LIGHT_GRAY_HEX if r % 2 == 0 else "FFFFFF")
+                
+                color = WHITE if is_header else BODY_GRAY
+                _set_cell_text(cell, str(val), bold=is_header, font_size=8, color=color, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
+
+
+def _build_mtp_sections(doc, report, section_num: int) -> int:
+    """Build the MTP highlights and Batch Pills summary sections."""
+    mtp_narrative = report.get("mtp_narrative", "").strip()
+    batch_pills = report.get("mtp_batch_pills", "").strip()
+
+    if not mtp_narrative and not batch_pills:
+        return section_num
+
+    _add_section_heading(doc, section_num, "Mentoring, Training & Placements (MTP)")
+
+    if mtp_narrative:
+        _add_sub_heading(doc, "MTP Highlights (Section IV)")
+        # Clean up narrative (remove [MTP Section IV] label if present)
+        text = mtp_narrative.replace("[MTP Section IV]", "").strip()
+        # If it looks like pipe-delimited table text, it will look bad, but usually it's paragraphs
+        for line in text.split("\n"):
+            if line.strip():
+                _add_body_text(doc, line.strip())
+
+    if batch_pills:
+        _add_sub_heading(doc, "Batch Pills Open Summary")
+        text = batch_pills.replace("[Batch Pills Open Summary]", "").strip()
+        for line in text.split("\n"):
+            if line.strip():
+                _add_body_text(doc, line.strip())
 
     return section_num + 1
 
@@ -710,14 +844,16 @@ def generate_docx(report: dict, output_path: str = None,
     # Order: Attendance → Infrastructure → Dept Highlights → Participation →
     #        Staff Changes → Classwork → Incidents → Library (ALWAYS LAST)
     num = 1
-    num = _build_attendance(doc, report, num)
-    num = _build_infrastructure(doc, report, num)
+    num = _build_overall_attendance(doc, report, num)
+    num = _build_mtp_sections(doc, report, num)
     num = _build_department_highlights(doc, report, num, all_images)
     num = _build_participation(doc, report, num)
     num = _build_staff_changes(doc, report, num)
     num = _build_classwork_adjustments(doc, report, num)
     num = _build_incidents(doc, report, num)
-    num = _build_library(doc, report, num)  # ALWAYS LAST
+    num = _build_library(doc, report, num)
+    num = _build_infrastructure(doc, report, num) # Moved to last
+
 
     # ── Footer note ───────────────────────────────────────────────────────────
     doc.add_paragraph()  # spacing
