@@ -8,8 +8,8 @@
 | II | Staff Attendance |
 |---|---|
 
-## Mentoring, Training & Placements Department
-|  | III. Students’ Attendance: |
+## MeIII. Students’ Attendance: ntoring, Training & Placements Department
+|  | |
 |---|---|
 
 ## VIII  Classwork Adjustment / Lectures Interchanged:
