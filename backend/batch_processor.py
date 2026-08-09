@@ -1,5 +1,5 @@
-"""
-Batch Processor — Process all daily report folders
+﻿"""
+Batch Processor â€” Process all daily report folders
 ====================================================
 Uses the hybrid pipeline:
 1. structured_extractor.py for deterministic data extraction
@@ -108,7 +108,7 @@ async def process_day(day_folder_path, dump_json=False):
         print(f"[SKIP] No .docx or .pdf files in {folder_name}")
         return
 
-    # ── Phase 1: Deterministic extraction ─────────────────────────────────
+    # â”€â”€ Phase 1: Deterministic extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     dept_data = []
     seen_dept_codes = set()  # Deduplicate
     
@@ -147,16 +147,17 @@ async def process_day(day_folder_path, dump_json=False):
             # Print extraction summary
             att = data.get("attendance") or data.get("library_attendance")
             att_str = f"on_rolls={att['on_rolls']}" if att else "no-attendance"
-            print(f"  [✓] {dept_name} ({filename}) — {att_str}")
+            print(f"  [OK] {dept_name} ({filename}) -- {att_str}")
             
         except Exception as e:
-            print(f"  [✗] Failed to process {filename}: {e}")
+            print(f"  [ERR] Failed to process {filename}: {e}")
+
 
     if not dept_data:
         print(f"[ERROR] No reports processed for {report_date}")
         return
 
-    # ── Phase 2: AI Consolidation (hybrid) ────────────────────────────────
+    # â”€â”€ Phase 2: AI Consolidation (hybrid) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     print(f"[INFO] Running hybrid consolidation for {report_date}...")
     print(f"  Deterministic: {len(dept_data)} departments extracted")
     
@@ -164,7 +165,7 @@ async def process_day(day_folder_path, dump_json=False):
                          if any(d.get(k, "").strip() 
                                for k in ["events_text", "staff_participation_text", 
                                          "student_participation_text", "other_matters_text"]))
-    print(f"  Narrative (→ LLM): {narrative_count} departments have narrative content")
+    print(f"  Narrative (â†’ LLM): {narrative_count} departments have narrative content")
     
     try:
         consolidated = consolidate(report_date, dept_data)
@@ -238,3 +239,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
