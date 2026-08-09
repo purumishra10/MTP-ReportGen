@@ -261,72 +261,87 @@ def _build_attendance(doc, report, section_num: int) -> int:
 
 
 def _build_overall_attendance(doc, report, section_num: int) -> int:
-    """Build a clean staff attendance summary table and student attendance table, including charts if available."""
-    table_data = report.get("overall_staff_attendance_table", [])
-    if not table_data:
-        return _build_attendance(doc, report, section_num)
+    """
+    Build the staff attendance section.
+    Uses attendance.departments (deterministic) directly for a clean dept-wise table.
+    Falls back to raw overall_staff_attendance_table if dept data is missing.
+    """
+    depts = report.get("attendance", {}).get("departments", [])
+    has_overall = bool(report.get("overall_staff_attendance_table"))
+
+    if not depts and not has_overall:
+        return section_num
 
     _add_section_heading(doc, section_num, "Staff & Student Attendance Report")
-    _add_sub_heading(doc, "Staff Attendance Summary")
 
-    # Extract summary rows
-    inst_iqi = ""
-    inst_remark = ""
-    teach_data = []
-    nonteach_data = []
+    # ── Department-wise table (from deterministic attendance data) ────────────
+    if depts:
+        _add_sub_heading(doc, "Staff Attendance Summary")
 
-    for row in table_data[-10:]:
-        row_text = " ".join(str(c).lower() for c in row)
-        nums = [c for c in row if str(c).strip().replace('.', '').isdigit()]
-        remarks = [c for c in row if str(c).strip() in ("Good", "Excellent", "Satisfactory", "Poor")]
-        
-        if "institute" in row_text and "quality" in row_text:
-            if len(nums) > 0: inst_iqi = nums[-1]
-            if len(remarks) > 0: inst_remark = remarks[-1]
-        elif "teaching" in row_text and "non" not in row_text:
-            teach_data = nums[:4] + [remarks[-1] if remarks else ""]
-        elif "non" in row_text and "teaching" in row_text:
-            nonteach_data = nums[:4] + [remarks[-1] if remarks else ""]
+        headers = ["S.No", "Department", "Teaching", "Non-Teaching",
+                   "On Rolls", "Absent", "Present", "Attendance %"]
+        table = doc.add_table(rows=1 + len(depts) + 1, cols=len(headers))
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.style = 'Table Grid'
+        _add_header_row(table, headers)
 
-    if inst_iqi:
-        _add_body_text(doc, f"Institute Quality Index (IQI): {inst_iqi} ({inst_remark})", bold_prefix=f"Institute Quality Index (IQI): {inst_iqi} ({inst_remark})")
+        total_teach = total_nt = total_rolls = total_absent = total_present = 0
+        for i, d in enumerate(depts):
+            t  = d.get("teaching_count", 0) or 0
+            nt = d.get("non_teaching_count", 0) or 0
+            on = d.get("on_rolls", 0) or 0
+            ab = d.get("absent", 0) or 0
+            pr = d.get("present", 0) or 0
+            total_teach  += t
+            total_nt     += nt
+            total_rolls  += on
+            total_absent += ab
+            total_present+= pr
+            _add_data_row(table, [
+                str(i + 1), d.get("dept", ""),
+                _val(t) if t else "—", _val(nt) if nt else "—",
+                _val(on), _val(ab), _val(pr),
+                _pct(d.get("percentage")),
+            ], i + 1)
 
-    # Build Summary Table
-    COLS = ["Category", "On Rolls", "Present", "Absent", "IQI", "Remark"]
-    table = doc.add_table(rows=3, cols=len(COLS))
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        # Totals row
+        total_pct = round(total_present / total_rolls * 100, 1) if total_rolls else 0
+        total_row = table.rows[-1]
+        totals = ["", "TOTAL",
+                  str(total_teach) if total_teach else "—",
+                  str(total_nt)    if total_nt    else "—",
+                  str(total_rolls), str(total_absent), str(total_present), _pct(total_pct)]
+        for i, val in enumerate(totals):
+            cell = total_row.cells[i]
+            _set_cell_shading(cell, MID_BLUE_HEX)
+            _set_cell_text(cell, val, bold=True, font_size=9,
+                           color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
-    # Header
-    for i, col_name in enumerate(COLS):
-        cell = table.rows[0].cells[i]
-        _set_cell_shading(cell, DARK_BLUE_HEX)
-        _set_cell_text(cell, col_name, bold=True, font_size=9, color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-
-    def _add_summary_row(row_idx, label, data):
-        row_obj = table.rows[row_idx]
-        vals = [label] + [str(x) for x in data]
-        while len(vals) < len(COLS): vals.append("")
-        for i, val in enumerate(vals[:len(COLS)]):
-            cell = row_obj.cells[i]
-            _set_cell_shading(cell, LIGHT_GRAY_HEX if row_idx % 2 == 0 else "FFFFFF")
-            _set_cell_text(cell, val, bold=False, font_size=9, color=BODY_GRAY, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-
-    if teach_data: _add_summary_row(1, "Teaching", teach_data)
-    if nonteach_data: _add_summary_row(2, "Non-Teaching", nonteach_data)
-
-    # Add Staff Chart if available
+    # ── Staff chart ───────────────────────────────────────────────────────────
     charts = report.get("attendance_charts", [])
     if len(charts) > 0 and os.path.exists(charts[0]):
         doc.add_picture(charts[0], width=Inches(6.0))
         doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # Build Student Attendance Table
+    # ── Student attendance + chart ────────────────────────────────────────────
     _build_student_attendance(doc, report)
-
-    # Add Student Chart if available
     if len(charts) > 1 and os.path.exists(charts[1]):
         doc.add_picture(charts[1], width=Inches(6.0))
         doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # ── Library staff attendance ──────────────────────────────────────────────
+    lib = report.get("attendance", {}).get("library")
+    if lib:
+        _add_sub_heading(doc, "Library Staff Attendance")
+        lib_headers = ["On Rolls", "Absent (w/ leave)", "Absent (w/o leave)", "Present"]
+        lib_table = doc.add_table(rows=2, cols=4)
+        lib_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        lib_table.style = 'Table Grid'
+        _add_header_row(lib_table, lib_headers)
+        _add_data_row(lib_table, [
+            _val(lib.get("on_rolls")), _val(lib.get("absent_with_leave")),
+            _val(lib.get("absent_without_leave")), _val(lib.get("present")),
+        ], 1)
 
     return section_num + 1
 
@@ -366,6 +381,32 @@ def _build_student_attendance(doc, report):
 
 
 
+def _parse_batch_pills_table(text: str):
+    """
+    Extract the header+values pipe-separated table from batch pills text.
+    Returns (headers: list[str], values: list[str]) or (None, None).
+    """
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    # Find the header line: contains '|' and at least 5 branch codes (CSE, AIML, IT, ECE…)
+    BRANCH_KEYS = {"CSE", "AIML", "IOT", "IT", "ECE", "EEE", "EIE", "ME", "CE", "AE"}
+    header_idx = None
+    for i, line in enumerate(lines):
+        cols = [c.strip() for c in line.split("|") if c.strip()]
+        if len(cols) >= 8 and len(BRANCH_KEYS & set(cols)) >= 4:
+            header_idx = i
+            break
+    if header_idx is None:
+        return None, None
+    headers = [c.strip() for c in lines[header_idx].split("|") if c.strip()]
+    # Next line should be all numbers
+    if header_idx + 1 < len(lines):
+        val_line = lines[header_idx + 1]
+        vals = [c.strip() for c in val_line.split("|") if c.strip()]
+        if all(v.isdigit() for v in vals):
+            return headers, vals
+    return headers, None
+
+
 def _build_mtp_sections(doc, report, section_num: int) -> int:
     """Build the MTP highlights and Batch Pills summary sections."""
     mtp_narrative = report.get("mtp_narrative", "").strip()
@@ -378,19 +419,41 @@ def _build_mtp_sections(doc, report, section_num: int) -> int:
 
     if mtp_narrative:
         _add_sub_heading(doc, "MTP Highlights (Section IV)")
-        # Clean up narrative (remove [MTP Section IV] label if present)
         text = mtp_narrative.replace("[MTP Section IV]", "").strip()
-        # If it looks like pipe-delimited table text, it will look bad, but usually it's paragraphs
         for line in text.split("\n"):
-            if line.strip():
-                _add_body_text(doc, line.strip())
+            line = line.strip()
+            if line:
+                _add_body_text(doc, line)
 
     if batch_pills:
         _add_sub_heading(doc, "Batch Pills Open Summary")
         text = batch_pills.replace("[Batch Pills Open Summary]", "").strip()
-        for line in text.split("\n"):
-            if line.strip():
-                _add_body_text(doc, line.strip())
+
+        # Try to render as a proper table
+        headers, values = _parse_batch_pills_table(text)
+        if headers and values:
+            n_cols = min(len(headers), len(values))
+            tbl = doc.add_table(rows=2, cols=n_cols)
+            tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+            tbl.style = 'Table Grid'
+            # Header row
+            for i, h in enumerate(headers[:n_cols]):
+                cell = tbl.rows[0].cells[i]
+                _set_cell_shading(cell, DARK_BLUE_HEX)
+                _set_cell_text(cell, h, bold=True, font_size=8,
+                               color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+            # Values row
+            for i, v in enumerate(values[:n_cols]):
+                cell = tbl.rows[1].cells[i]
+                _set_cell_shading(cell, LIGHT_GRAY_HEX)
+                _set_cell_text(cell, v, bold=True, font_size=9,
+                               color=DARK_BLUE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+        else:
+            # Fallback: plain text lines (skip the raw pill markers)
+            for line in text.split("\n"):
+                line = line.strip()
+                if line and not line.startswith("["):
+                    _add_body_text(doc, line)
 
     return section_num + 1
 
