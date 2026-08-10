@@ -10,6 +10,7 @@ __pycache__/
 .Python
 generated_reports/
 scratch/
+~$*.docx
 build/
 develop-eggs/
 dist/
