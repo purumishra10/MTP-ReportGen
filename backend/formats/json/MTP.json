@@ -5,30 +5,54 @@
     "format": [
         {
             "section_title": "Staff Attendance:",
-            "type": "table"
+            "columns": [
+                "S.No",
+                "Dept.",
+                "Category",
+                "On Rolls",
+                "Absent",
+                "Details/Remarks"
+            ]
         },
         {
-            "section_title": "Students’ Attendance:",
-            "type": "table"
-        },
-        {
-            "section_title": "MTP Section:",
-            "type": "narrative"
+            "section_title": "MTP Section (Mentoring, Training & Placements):",
+            "columns": [
+                "S.No",
+                "Company / Organization",
+                "Activity Type",
+                "Target Batch / Dept",
+                "No. of Students",
+                "Status / Outcome",
+                "Details / Remarks"
+            ]
         },
         {
             "section_title": "Batch Pills Open Summary:",
-            "type": "table_or_narrative"
+            "columns": [
+                "CSE", "CSBS", "AIML", "IOT", "DS", "CyS", "AIDS", "IT", "ECE", "EEE", "EIE", "ME", "CE", "AE", "M.TECH", "TOTAL"
+            ]
         },
         {
             "section_title": "Classwork Adjustment / Lectures Interchanged:",
-            "type": "table"
+            "columns": [
+                "S. No",
+                "Dept",
+                "Subject",
+                "Time",
+                "Adjusted from",
+                "Adjusted to"
+            ]
         },
         {
-            "section_title": "Participation by Staff/Students:",
-            "type": "table"
+            "section_title": "Participation by Staff / Students:",
+            "columns": [
+                "S. No",
+                "Name",
+                "Role / Category",
+                "Event Name",
+                "Status / Achievement",
+                "Date & Duration"
+            ]
         }
-    ],
-    "ignore_sections": [
-        "IV", "V", "VI"
     ]
 }
