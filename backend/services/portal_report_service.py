@@ -41,12 +41,17 @@ def generate_from_portal(date_str: str) -> Optional[bytes]:
         
         # If the content contains raw HTML from the rich text editor, it would be okay,
         # Gemini handles HTML reasonably well. But standardizing to plain text is better.
-        text = record["content"] or ""
-        
-        # Extract images from HTML string if any?
-        # For now, the portal doesn't allow image upload natively to the DB (it saves base64 in HTML)
-        # We will just pass the raw text to AI.
-        
+        raw_content = record["content"] or ""
+        text = raw_content
+        if raw_content.strip().startswith("{"):
+            try:
+                import json as _json
+                parsed_obj = _json.loads(raw_content)
+                if isinstance(parsed_obj, dict) and "text" in parsed_obj:
+                    text = parsed_obj["text"]
+            except Exception:
+                text = raw_content
+
         dept_reports.append({
             "dept_code": dept_code,
             "dept_name": dept_name,
