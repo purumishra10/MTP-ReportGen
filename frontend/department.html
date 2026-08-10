@@ -113,10 +113,13 @@
         <!-- Header -->
         <header class="flex justify-between items-end mb-8">
             <div>
-                <h2 class="font-headline font-bold text-3xl text-on-surface tracking-tight">Daily Departmental Briefing</h2>
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="px-2.5 py-0.5 rounded text-xs font-bold bg-primary/10 text-primary uppercase tracking-wider" id="dept-format-badge">Fixed Department Schema</span>
+                </div>
+                <h2 class="font-headline font-bold text-3xl text-on-surface tracking-tight" id="main-dept-title">Daily Departmental Briefing</h2>
                 <div class="flex items-center gap-4 mt-3">
                     <input type="date" id="dept-date" class="border-outline-variant rounded-md text-sm p-1.5 outline-none focus:border-primary text-on-surface-variant font-bold" required>
-                    <p class="text-on-surface-variant text-sm">Drafting report for Academic Session 2026-27</p>
+                    <p class="text-on-surface-variant text-sm">Enter contents strictly according to official department format</p>
                 </div>
             </div>
             <!-- Status Chip -->
@@ -129,38 +132,6 @@
         <!-- Table Sections Container -->
         <div id="table-editor" class="flex flex-col gap-6">
             <!-- Dynamic Sections Go Here -->
-        </div>
-
-        <div class="flex flex-col gap-6 mt-6">
-
-            <!-- ═══════════ SECTION 9: Free-Text Additional Notes ═══════════ -->
-            <div class="section-card" id="section-notes">
-                <div class="section-header" onclick="toggleSection(this)">
-                    <div class="flex items-center gap-3">
-                        <div class="section-icon bg-slate-100 text-slate-600">
-                            <span class="material-symbols-outlined text-[20px]">edit_note</span>
-                        </div>
-                        <div>
-                            <h3 class="font-headline font-bold text-base text-on-surface">Additional Notes / Any Other Matter</h3>
-                            <p class="text-[11px] text-on-surface-variant mt-0.5">Free-text area for any additional information</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <span class="material-symbols-outlined section-chevron text-on-surface-variant transition-transform">expand_more</span>
-                    </div>
-                </div>
-                <div class="section-body">
-                    <!-- Mini Toolbar -->
-                    <div class="flex items-center gap-1 p-2 border-b border-surface-container-high bg-[#f8f9fa] rounded-t-lg">
-                        <button class="p-1.5 hover:bg-surface-container-high rounded transition-colors" title="Bold" onclick="document.execCommand('bold')"><span class="material-symbols-outlined text-on-surface-variant text-sm">format_bold</span></button>
-                        <button class="p-1.5 hover:bg-surface-container-high rounded transition-colors" title="Italic" onclick="document.execCommand('italic')"><span class="material-symbols-outlined text-on-surface-variant text-sm">format_italic</span></button>
-                        <button class="p-1.5 hover:bg-surface-container-high rounded transition-colors" title="Bullet List" onclick="document.execCommand('insertUnorderedList')"><span class="material-symbols-outlined text-on-surface-variant text-sm">format_list_bulleted</span></button>
-                        <button class="p-1.5 hover:bg-surface-container-high rounded transition-colors" title="Numbered List" onclick="document.execCommand('insertOrderedList')"><span class="material-symbols-outlined text-on-surface-variant text-sm">format_list_numbered</span></button>
-                    </div>
-                    <div id="editor-canvas" data-placeholder="Type any additional remarks, observations, or notes for today's report..." class="editor-placeholder p-6 min-h-[200px] font-body text-on-surface leading-relaxed focus:outline-none border border-outline-variant/20 rounded-b-lg bg-white" contenteditable="true"></div>
-                </div>
-            </div>
-
         </div>
         <!-- End Table Sections -->
 

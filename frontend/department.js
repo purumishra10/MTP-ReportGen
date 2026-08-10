@@ -1,25 +1,35 @@
 document.addEventListener('DOMContentLoaded', async () => {
     const submitBtn = document.getElementById('submit-dept-btn');
     const saveDraftBtn = document.getElementById('save-draft-btn');
-    const editorCanvas = document.getElementById('editor-canvas');
     const dateInput = document.getElementById('dept-date');
     const statusChip = document.getElementById('save-status-chip');
     
     dateInput.valueAsDate = new Date();
 
-    // Dynamically set department name from login
-    const deptName = localStorage.getItem('dept_code') || "CSE";
+    const deptCode = localStorage.getItem('dept_code') || "cse";
     const deptTitle = document.getElementById('sidebar-dept-name');
-    if (deptTitle) deptTitle.innerText = `${deptName} Dept`;
+    const mainTitle = document.getElementById('main-dept-title');
+    const formatBadge = document.getElementById('dept-format-badge');
 
-    // Exceptional departments logic (from user prompt)
-    // For English, Library, MTP, Staff Attendance, Staff Student Attendance, Chemistry
-    // we use their specific schemas dynamically!
+    if (deptTitle) deptTitle.innerText = `${deptCode.toUpperCase()} Dept`;
+    if (mainTitle) mainTitle.innerText = `${deptCode.toUpperCase()} Daily Report`;
+
+    let activeSchema = null;
+
+    // ─── Fetch Department Schema ────────────────────────────────
     async function loadAndRenderFormat() {
         try {
-            const response = await fetch(`/api/formats/${deptName}`);
+            const response = await fetch(`/api/formats/${deptCode}`);
             const schema = await response.json();
             if (schema && schema.format) {
+                activeSchema = schema;
+                if (formatBadge) {
+                    if (schema.departments && schema.departments.length > 0) {
+                        formatBadge.innerText = `Fixed Schema: ${schema.departments.join(', ')}`;
+                    } else {
+                        formatBadge.innerText = `Fixed Format Schema (${deptCode.toUpperCase()})`;
+                    }
+                }
                 renderFormat(schema.format);
             }
         } catch(e) {
@@ -34,57 +44,77 @@ document.addEventListener('DOMContentLoaded', async () => {
         const nav = document.getElementById('section-nav');
         const editor = document.getElementById('table-editor');
         
-        let navHTML = `<p class="px-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-3">Sections</p>`;
+        let navHTML = `<p class="px-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-3">Report Sections</p>`;
         let editorHTML = '';
 
         sections.forEach((sec, idx) => {
             const icon = icons[idx % icons.length];
             const color = colors[idx % colors.length];
+            const title = sec.section_title || `Section ${idx + 1}`;
+            const cols = sec.columns || [];
             
             navHTML += `
                 <a href="#section-${idx}" class="nav-link flex items-center space-x-3 px-4 py-2.5 text-slate-600 hover:bg-surface-container-high transition-colors rounded-md text-[13px]">
                     <span class="material-symbols-outlined text-[18px]">${icon}</span>
-                    <span class="truncate" title="${sec.section_title}">${sec.section_title.replace(':', '').substring(0, 22)}</span>
+                    <span class="truncate" title="${title}">${title.replace(':', '').substring(0, 22)}</span>
                 </a>
             `;
 
+            // Special table layout check
+            const titleLower = title.toLowerCase();
+            const isBatchPills = titleLower.includes('batch pills');
+            const isStaffAttendance = titleLower.includes('staff attendance');
+            const isStudentAttendance = titleLower.includes('students attendance') || titleLower.includes('b.tech students') || titleLower.includes('m.tech students');
 
+            let thead = '';
+            let tbody = '';
 
-            function getInputHTML(colName, dept) {
-                let name = colName.toLowerCase();
-                let placeholder = getPlaceholderStr(colName, dept);
+            if (isBatchPills) {
+                // Horizontal Branch Pills table
+                thead = cols.map(c => `<th>${c}</th>`).join('');
+                tbody = `<tr>${cols.map(c => `<td><input type="number" class="form-input text-center font-bold" data-col="${c}" placeholder="0"></td>`).join('')}</tr>`;
+            } else {
+                thead = cols.map((col, i) => i === 0 ? `<th class="w-14">${col}</th>` : `<th>${col}</th>`).join('');
                 
-                // Dates
-                if (name === 'reported on' || name === 'attended on' || name === 'completed on' || name.includes('date of joining') || name === 'date') {
-                    return `<input type="date" class="form-input">`;
+                // Initial rows generator
+                let initialRows = [];
+                if (isStaffAttendance) {
+                    initialRows = [
+                        { "Category": "Teaching" },
+                        { "Category": "Non-Teaching" }
+                    ];
+                } else if (isStudentAttendance) {
+                    initialRows = [
+                        { "Year": "I Year" },
+                        { "Year": "II Year" },
+                        { "Year": "III Year" },
+                        { "Year": "IV Year" }
+                    ];
+                } else {
+                    initialRows = [{}];
                 }
-                
-                // Numbers
-                if (name.includes('rolls') || name.includes('absent') || name.includes('participants')) {
-                    return `<input type="number" class="form-input text-center" placeholder="${placeholder}">`;
-                }
-                
-                // Long Text Blocks
-                if (name.includes('remarks') || name.includes('details') || name.includes('problem') || name.includes('statement') || name.includes('description') || name.includes('event')) {
-                    return `<textarea rows="1" class="form-input auto-resize" placeholder="${placeholder}"></textarea>`;
-                }
-                
-                // Default text
-                return `<input type="text" class="form-input" placeholder="${placeholder}">`;
+
+                tbody = initialRows.map((preset, rIdx) => {
+                    return `<tr>` + cols.map((col, cIdx) => {
+                        if (cIdx === 0) return `<td class="sno-cell">${rIdx + 1}</td>`;
+                        const presetVal = preset[col] || '';
+                        if (presetVal) {
+                            return `<td><input type="text" class="form-input font-semibold bg-slate-50" value="${presetVal}" readonly></td>`;
+                        }
+                        return `<td>${getInputHTML(col, deptCode)}</td>`;
+                    }).join('') + `</tr>`;
+                }).join('');
             }
 
-            let thead = sec.columns.map((col, i) => i === 0 ? `<th class="w-14">S.No</th>` : `<th>${col}</th>`).join('');
-            let tbody = sec.columns.map((col, i) => i === 0 ? `<td class="sno-cell">1</td>` : `<td>${getInputHTML(col, deptName)}</td>`).join('');
-
             editorHTML += `
-            <div class="section-card" id="section-${idx}">
+            <div class="section-card" id="section-${idx}" data-section-idx="${idx}">
                 <div class="section-header" onclick="toggleSection(this)">
                     <div class="flex items-center gap-3">
                         <div class="section-icon bg-${color}-50 text-${color}-600">
                             <span class="material-symbols-outlined text-[20px]">${icon}</span>
                         </div>
                         <div>
-                            <h3 class="font-headline font-bold text-base text-on-surface">${sec.section_title}</h3>
+                            <h3 class="font-headline font-bold text-base text-on-surface">${title}</h3>
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
@@ -96,39 +126,34 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                 </div>
                 <div class="section-body">
-                    <div class="table-wrapper">
-                        <table class="report-table" data-section="${idx}">
+                    <div class="table-wrapper overflow-x-auto">
+                        <table class="report-table w-full" data-section="${idx}">
                             <thead>
                                 <tr>${thead}</tr>
                             </thead>
                             <tbody>
-                                <tr>${tbody}</tr>
+                                ${tbody}
                             </tbody>
                         </table>
                     </div>
-                    <div class="table-actions">
-                        <button class="add-row-btn" onclick="addRow(this)">
+                    ${!isBatchPills && !isStaffAttendance && !isStudentAttendance ? `
+                    <div class="table-actions mt-3 flex gap-2">
+                        <button class="add-row-btn px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded flex items-center gap-1" onclick="addRow(this)">
                             <span class="material-symbols-outlined text-[16px]">add</span> Add Row
                         </button>
-                        <button class="remove-row-btn" onclick="removeRow(this)">
+                        <button class="remove-row-btn px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded flex items-center gap-1" onclick="removeRow(this)">
                             <span class="material-symbols-outlined text-[16px]">remove</span> Remove
                         </button>
-                    </div>
+                    </div>` : ''}
                 </div>
             </div>`;
         });
-        
-        navHTML += `<div class="h-px bg-outline-variant/30 my-3"></div>
-            <a href="#section-notes" class="nav-link flex items-center space-x-3 px-4 py-2.5 text-slate-600 hover:bg-surface-container-high transition-colors rounded-md text-[13px]">
-                <span class="material-symbols-outlined text-[18px]">edit_note</span>
-                <span>Additional Notes</span>
-            </a>`;
 
         nav.innerHTML = navHTML;
         editor.innerHTML = editorHTML;
         
         initInteractions();
-        loadDraft();
+        loadSubmissionForDate();
     }
 
     function initInteractions() {
@@ -178,14 +203,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ─── Save/Submit Handlers ───────────────────────────────────
     async function sendToServer(statusVal) {
         const dateVal = dateInput.value;
-        const dept = deptName;
 
         if (!dateVal) {
             alert('Please select a report date.');
             return;
         }
 
-        const content = collectAllData();
+        const payload = collectAllData();
         statusChip.innerText = "Processing...";
 
         try {
@@ -194,7 +218,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     date: dateVal,
-                    content: JSON.stringify(content),
+                    content: JSON.stringify(payload),
                     status: statusVal
                 })
             });
@@ -204,13 +228,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     statusChip.innerText = "Draft Saved";
                     statusChip.parentNode.className = "flex items-center gap-2 bg-[#f0fdf4] px-4 py-2 rounded-full border border-[#bbf7d0]";
                     statusChip.className = "text-xs font-bold text-[#166534] uppercase tracking-widest";
-                    // Also save locally
-                    saveDraftLocally(content);
                 } else if (statusVal === 'pending_review') {
                     statusChip.innerText = "Submitted";
                     statusChip.parentNode.className = "flex items-center gap-2 bg-[#eef4ff] px-4 py-2 rounded-full border border-[#bfdbfe]";
                     statusChip.className = "text-xs font-bold text-[#1e40af] uppercase tracking-widest";
-                    alert('Submitted for PA Review!');
+                    alert('Report submitted successfully to PA Office for review!');
                 }
             } else {
                 const err = await response.json();
@@ -229,111 +251,150 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ─── Collect All Table Data ─────────────────────────────────
     function collectAllData() {
-        const data = { sections: [], notes: '' };
+        const sectionsData = [];
+        let reportTextLines = [];
 
         document.querySelectorAll('.section-card').forEach(card => {
-            if (card.id === 'section-notes') return;
-
             const title = card.querySelector('.section-header h3')?.innerText || '';
             const nilCheckbox = card.querySelector('.nil-checkbox');
             const isNil = nilCheckbox ? nilCheckbox.checked : false;
 
-            const sectionData = {
+            const secObj = {
                 title: title,
                 nil: isNil,
                 rows: []
             };
 
-            if (!isNil) {
+            reportTextLines.push(`[${title}]`);
+
+            if (isNil) {
+                reportTextLines.push("Nil\n");
+            } else {
                 const table = card.querySelector('.report-table');
                 if (table) {
                     const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim());
                     const rows = table.querySelectorAll('tbody tr');
 
+                    let tableTextRows = [];
+
                     rows.forEach(row => {
                         const rowData = {};
                         const cells = row.querySelectorAll('td');
                         cells.forEach((cell, idx) => {
-                            if (idx === 0) {
-                                rowData[headers[0]] = cell.innerText.trim();
+                            const headerName = headers[idx] || `Col${idx+1}`;
+                            if (cell.classList.contains('sno-cell')) {
+                                rowData[headerName] = cell.innerText.trim();
                             } else {
                                 const input = cell.querySelector('input, textarea');
                                 if (input) {
-                                    rowData[headers[idx]] = input.value.trim();
+                                    rowData[headerName] = input.value.trim();
                                 }
                             }
                         });
 
-                        // Only include row if at least one non-sno field has data
-                        const hasData = Object.entries(rowData).some(([k, v]) => k !== headers[0] && v !== '');
+                        const hasData = Object.entries(rowData).some(([k, v]) => !k.toLowerCase().includes('s.no') && v !== '');
                         if (hasData) {
-                            sectionData.rows.push(rowData);
+                            secObj.rows.push(rowData);
+                            tableTextRows.push(headers.map(h => rowData[h] || '').join(' | '));
                         }
                     });
+
+                    if (secObj.rows.length === 0) {
+                        reportTextLines.push("Nil\n");
+                    } else {
+                        reportTextLines.push(headers.join(' | '));
+                        reportTextLines.push(...tableTextRows);
+                        reportTextLines.push("");
+                    }
                 }
             }
 
-            data.sections.push(sectionData);
+            sectionsData.push(secObj);
         });
 
-        // Collect free-text notes
-        if (editorCanvas) {
-            data.notes = editorCanvas.innerHTML.trim();
-        }
-
-        return data;
+        return {
+            sections: sectionsData,
+            text: reportTextLines.join('\n').trim()
+        };
     }
 
-    // ─── Local Draft Save/Load ──────────────────────────────────
-    function saveDraftLocally(data) {
-        const key = `draft_${deptName}_${dateInput.value}`;
-        localStorage.setItem(key, JSON.stringify(data));
-    }
-
-    function loadDraft() {
-        const key = `draft_${deptName}_${dateInput.value}`;
-        const saved = localStorage.getItem(key);
-        if (!saved) return;
+    // ─── Fetch Submission for Date ──────────────────────────────
+    async function loadSubmissionForDate() {
+        const dateVal = dateInput.value;
+        if (!dateVal) return;
 
         try {
-            const data = JSON.parse(saved);
-            if (data.sections) {
-                data.sections.forEach((sec, idx) => {
-                    const card = document.getElementById(`section-${idx}`);
-                    if (!card) return;
+            const resp = await fetch(`/api/department/submission/${dateVal}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
 
-                    const nilCb = card.querySelector('.nil-checkbox');
-                    if (nilCb && sec.nil) {
-                        nilCb.checked = true;
-                        updateNilState(nilCb);
+            if (!data || !data.content) {
+                resetForm();
+                return;
+            }
+
+            let statusText = (data.status || 'draft').toUpperCase();
+            statusChip.innerText = statusText;
+
+            let parsed = null;
+            if (typeof data.content === 'string' && data.content.trim().startswith('{')) {
+                try { parsed = JSON.parse(data.content); } catch(e) {}
+            }
+
+            if (parsed && parsed.sections) {
+                populateFormFromSections(parsed.sections);
+            }
+        } catch (e) {
+            console.warn('Failed to load submission for date:', e);
+        }
+    }
+
+    function populateFormFromSections(sections) {
+        sections.forEach((sec, idx) => {
+            const card = document.querySelector(`.section-card[data-section-idx="${idx}"]`);
+            if (!card) return;
+
+            const nilCb = card.querySelector('.nil-checkbox');
+            if (nilCb) {
+                nilCb.checked = sec.nil;
+                updateNilState(nilCb);
+            }
+
+            if (!sec.nil && sec.rows && sec.rows.length > 0) {
+                const table = card.querySelector('.report-table');
+                const tbody = table?.querySelector('tbody');
+                if (!tbody) return;
+
+                const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim());
+                
+                // Clear extra dynamic rows beyond presets
+                const existingRows = tbody.querySelectorAll('tr');
+                if (sec.rows.length > existingRows.length) {
+                    for (let r = existingRows.length; r < sec.rows.length; r++) {
+                        const newTr = createRowFromHeaders(headers, r + 1);
+                        tbody.appendChild(newTr);
                     }
+                }
 
-                    if (!sec.nil && sec.rows && sec.rows.length > 0) {
-                        const table = card.querySelector('.report-table');
-                        const tbody = table?.querySelector('tbody');
-                        if (!tbody) return;
-
-                        // Clear existing rows
-                        tbody.innerHTML = '';
-
-                        sec.rows.forEach((rowData, rIdx) => {
-                            const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim());
-                            const tr = createRowFromHeaders(headers, rIdx + 1, rowData);
-                            tbody.appendChild(tr);
+                const currentTrs = tbody.querySelectorAll('tr');
+                sec.rows.forEach((rowData, rIdx) => {
+                    if (currentTrs[rIdx]) {
+                        headers.forEach((h, cIdx) => {
+                            const td = currentTrs[rIdx].children[cIdx];
+                            if (td) {
+                                const input = td.querySelector('input, textarea');
+                                if (input && rowData[h] !== undefined) {
+                                    input.value = rowData[h];
+                                }
+                            }
                         });
                     }
                 });
             }
-
-            if (data.notes && editorCanvas) {
-                editorCanvas.innerHTML = data.notes;
-            }
-        } catch (e) {
-            console.warn('Failed to load draft:', e);
-        }
+        });
     }
 
-    function createRowFromHeaders(headers, sno, rowData) {
+    function createRowFromHeaders(headers, sno) {
         const tr = document.createElement('tr');
         headers.forEach((header, idx) => {
             const td = document.createElement('td');
@@ -341,21 +402,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 td.className = 'sno-cell';
                 td.textContent = sno;
             } else {
-                td.innerHTML = getInputHTML(header, deptName);
-                const input = td.querySelector('input, textarea');
-                if (input) input.value = rowData?.[header] || '';
+                td.innerHTML = getInputHTML(header, deptCode);
             }
             tr.appendChild(td);
         });
         return tr;
     }
 
-    // Reload draft when date changes
+    function resetForm() {
+        document.querySelectorAll('.nil-checkbox').forEach(cb => {
+            cb.checked = false;
+            updateNilState(cb);
+        });
+        document.querySelectorAll('.report-table tbody input, .report-table tbody textarea').forEach(inp => {
+            if (!inp.readOnly) inp.value = '';
+        });
+    }
+
     dateInput.addEventListener('change', () => {
         statusChip.innerText = "Drafting";
         statusChip.parentNode.className = "flex items-center gap-2 bg-[#fffbeb] px-4 py-2 rounded-full border border-[#fde68a]";
         statusChip.className = "text-xs font-bold text-[#b45309] uppercase tracking-widest";
-        loadDraft();
+        loadSubmissionForDate();
     });
 });
 
@@ -396,16 +464,14 @@ function addRow(button) {
             td.className = 'sno-cell';
             td.textContent = rowCount + 1;
         } else {
-                td.innerHTML = getInputHTML(headers[i], deptName);
-            }
-            newRow.appendChild(td);
+            td.innerHTML = getInputHTML(headers[i], deptName);
+        }
+        newRow.appendChild(td);
     }
 
-    // Subtle animation
     newRow.style.animation = 'slideDown 0.2s ease';
     tbody.appendChild(newRow);
     
-    // Focus first input in new row
     const firstInput = newRow.querySelector('input');
     if (firstInput) firstInput.focus();
 }
@@ -416,7 +482,7 @@ function removeRow(button) {
     if (!tbody) return;
 
     const rows = tbody.querySelectorAll('tr');
-    if (rows.length <= 1) return; // Keep at least one row
+    if (rows.length <= 1) return;
 
     const lastRow = rows[rows.length - 1];
     lastRow.style.animation = 'fadeOut 0.15s ease';
@@ -438,28 +504,24 @@ function getInputHTML(colName, dept) {
     let name = colName.toLowerCase();
     let placeholder = getPlaceholderStr(colName, dept);
     
-    // Exact Date matches
     if (name === 'reported on' || name === 'attended on' || name === 'completed on' || name.includes('date of joining') || name === 'date') {
         return `<input type="date" class="form-input">`;
     }
     
-    // Numbers
-    if (name.includes('rolls') || name.includes('absent') || name.includes('participants')) {
+    if (name.includes('rolls') || name.includes('absent') || name.includes('participants') || name.includes('no’s') || name.includes('no. of')) {
         return `<input type="number" class="form-input text-center" placeholder="${placeholder}">`;
     }
     
-    // Long Text Blocks
     if (name.includes('remarks') || name.includes('details') || name.includes('problem') || name.includes('statement') || name.includes('description') || name.includes('event')) {
         return `<textarea rows="1" class="form-input auto-resize" placeholder="${placeholder}"></textarea>`;
     }
     
-    // Default text
     return `<input type="text" class="form-input" placeholder="${placeholder}">`;
 }
 
 function getPlaceholderStr(colName, dept) {
     let text = colName.toLowerCase();
-    if (text.includes('dept') || text.includes('department')) return "e.g. " + dept;
+    if (text.includes('dept') || text.includes('department')) return "e.g. " + dept.toUpperCase();
     if (text.includes('category')) return "Teaching / Non";
     if (text.includes('rolls') || text.includes('absent') || text.includes('participants')) return "0";
     if (text.includes('name')) return "e.g. Dr. A. Sharma";
