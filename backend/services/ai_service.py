@@ -82,109 +82,113 @@ GEMINI_MODELS = [
 
 SUMMARIZE_SYSTEM_PROMPT = """You are a report summarizer for VNRVJIET (VNR Vignana Jyothi Institute of Engineering & Technology).
 
-You will receive narrative sections from department daily reports: events, staff/student participation entries, MTP (Mentoring, Training & Placements) data, industry visits, and any other free-text matters.
+You will receive narrative sections from department daily reports: events, staff/student participation entries, industry visits, and any other free-text matters.
 
 YOUR ONLY JOB: faithfully summarize and organize narrative content.
 
 ══════════════════════════════════════════════════════
-ABSOLUTE RULES — VIOLATION IS NOT ACCEPTABLE:
-1. Every fact must come DIRECTLY from the input text. DO NOT infer, guess, or add anything.
+ABSOLUTE RULES:
+1. Every fact must come DIRECTLY from the input. DO NOT infer, guess, or add anything.
 2. Use EXACT WORDS from the source wherever possible.
-3. DO NOT INVENT ANY NUMBER. If a participant count is not explicitly stated in the source, set it to null.
+3. DO NOT INVENT ANY NUMBER. Use null for any count not explicitly stated in the source.
 4. Return ONLY valid JSON. No explanation, no preamble, no markdown code fences.
-5. DO NOT SKIP ANY EVENT or participation entry. Include every single one.
-6. If a section is entirely empty or only contains "nil"/"none"/"-", skip it — do NOT include empty placeholders.
-7. For MTP: Include ALL placement drives, pre-placement talks, aptitude tests, training sessions, batch statistics. This is CRITICAL data. But DO NOT GUESS any student count or percentage — only use numbers explicitly stated in the source.
+5. DO NOT SKIP ANY EVENT or participation entry.
+6. If a section is empty or only "nil"/"none"/"-", skip it.
 ══════════════════════════════════════════════════════
 
-CONTENT SOURCES YOU WILL RECEIVE:
+SOURCES YOU WILL RECEIVE:
 - [Events / Seminars / Workshops] — table rows
-- [Participation by Staff] — table rows  
+- [Participation by Staff] — table rows
 - [Participation by Students] — table rows
-- [MTP Section IV] — MTP narrative text
-- [Batch Pills Open Summary] — MTP placement stats
 - [Free Text — <dept name>] — paragraphs written outside the template tables
 - [Other] — unclassified table content
 
-TREAT ALL SOURCES EQUALLY. If an event appears only in [Free Text], still include it. Many departments write their events as free text paragraphs rather than filling the template tables.
+TREAT ALL SOURCES EQUALLY. Many departments write events as free text paragraphs.
 
-For each EVENT, extract:
-- "name": exact event name from source
-- "summary": 1-3 sentence summary using source wording; include resource person, participant count (if stated), venue, outcomes
-- "importance": "high", "medium", or "low"
-  * HIGH: Placement drives, PPTs, external events, resource persons from industry/academia, events with >50 participants (if count stated), competitive/national/international events
-  * MEDIUM: Internal workshops 20-50 participants, dept-level seminars
-  * LOW: Routine internal sessions <20 participants
-- "date": exact date string from source, or null
-- "duration": duration string from source, or null
-- "participants_internal": integer from source ONLY, or null — DO NOT GUESS
-- "participants_external": integer from source ONLY, or null — DO NOT GUESS
-- "resource_person": name string or null
+For each EVENT:
+- "name": exact event name
+- "summary": 1-3 sentences using source wording; include resource person, count (if stated), venue
+- "importance": "high" (external events, industry/academia speakers, >50 participants if stated, competitive/national events) | "medium" (internal 20-50 participants) | "low" (routine <20 participants)
+- "date": exact date string or null
+- "duration": duration string or null
+- "participants_internal": integer from source ONLY or null
+- "participants_external": integer from source ONLY or null
+- "resource_person": name or null
 
-For each STAFF PARTICIPATION entry:
-- "name": person's name
-- "dept": department name
-- "event": event name
-- "role": their role (delegate, speaker, resource person, participant, etc.)
-- "date": date string or null
-- "venue": venue if mentioned, else null
-- "summary": 1 sentence using source wording
+For each STAFF PARTICIPATION:
+- "name", "dept", "event", "role", "date" (or null), "venue" (or null), "summary" (1 sentence)
 
-For each STUDENT PARTICIPATION entry:
-- "name": student's name or "students" if individual names not given
-- "dept": department name
-- "event": event name
-- "achievement": achievement or status (e.g. "participated", "won 1st prize")
-- "date": date string or null
-- "summary": 1 sentence using source wording
+For each STUDENT PARTICIPATION:
+- "name" (or "students"), "dept", "event", "achievement", "date" (or null), "summary" (1 sentence)
 
-For OTHER MATTERS: preserve the exact description from the source.
+For OTHER MATTERS: preserve the exact description.
 
-OUTPUT SCHEMA (return ONLY this JSON, nothing else):
+OUTPUT (return ONLY this JSON):
 {
   "department_highlights": [
     {
       "dept": "full department name",
       "dept_code": "short code",
-      "events": [
-        {
-          "name": "...",
-          "summary": "...",
-          "importance": "high|medium|low",
-          "date": "...|null",
-          "duration": "...|null",
-          "participants_internal": 42,
-          "participants_external": null,
-          "resource_person": "...|null"
-        }
-      ],
-      "other_matters": ["string descriptions"]
+      "events": [{"name": "...", "summary": "...", "importance": "high|medium|low", "date": null, "duration": null, "participants_internal": null, "participants_external": null, "resource_person": null}],
+      "other_matters": ["string"]
     }
   ],
-  "staff_participation": [
-    {
-      "name": "...", "dept": "...", "event": "...", "role": "...",
-      "date": "...|null", "venue": "...|null", "summary": "..."
-    }
-  ],
-  "student_participation": [
-    {
-      "name": "...", "dept": "...", "event": "...", "achievement": "...",
-      "date": "...|null", "summary": "..."
-    }
-  ]
+  "staff_participation": [{"name": "...", "dept": "...", "event": "...", "role": "...", "date": null, "venue": null, "summary": "..."}],
+  "student_participation": [{"name": "...", "dept": "...", "event": "...", "achievement": "...", "date": null, "summary": "..."}]
 }
 
-IMPORTANT GROUPING RULES:
-- Group events under their department in department_highlights.
-- Staff participation and student participation go into the top-level lists.
-- Only include a department in department_highlights if it has at least ONE event or noteworthy matter.
-- MTP department entries (placement drives, PPTs) are ALWAYS "high" importance."""
+Rules: Group events under their department. Include a dept only if it has at least one event or noteworthy matter."""
+
+
+# ── Dedicated MTP extraction prompt (kept separate to avoid bloating main prompt) ──
+
+MTP_SYSTEM_PROMPT = """You extract placement and training activity data from MTP (Mentoring, Training & Placements) report text.
+
+RULES:
+1. Extract EVERY distinct activity: placement drives, PPTs, aptitude tests, training sessions, mock interviews, internships.
+2. Use EXACT WORDS from the source. DO NOT invent any number — use null if not stated.
+3. Return ONLY valid JSON array. No preamble, no markdown fences.
+
+For each activity output:
+{
+  "company": "company name or null",
+  "activity_type": "placement_drive|ppt|aptitude_test|training|mock_interview|internship|other",
+  "summary": "1-2 sentences using exact source wording",
+  "student_count": null,
+  "batch": "batch year string or null",
+  "status": "brief status from source or null"
+}
+
+Return a JSON array: [{...}, {...}]"""
+
+
+def _extract_mtp_summary(mtp_narrative: str) -> list[dict]:
+    """
+    Dedicated LLM call to extract structured MTP activity items from the raw narrative.
+    Kept separate from main dept summarization to avoid bloating that prompt.
+    """
+    if not mtp_narrative or not mtp_narrative.strip():
+        return []
+    try:
+        user_msg = f"Extract all MTP activities from this report text:\n\n{mtp_narrative.strip()}"
+        raw = _llm_call(MTP_SYSTEM_PROMPT, user_msg)
+        parsed = _parse_json(raw, context="mtp_summary_extraction")
+        if isinstance(parsed, list):
+            return parsed
+        # Sometimes LLM wraps in {"mtp_summary": [...]}
+        if isinstance(parsed, dict):
+            for key in ("mtp_summary", "activities", "items"):
+                if key in parsed and isinstance(parsed[key], list):
+                    return parsed[key]
+    except Exception as e:
+        print(f"[WARN] MTP summary extraction failed: {e}")
+    return []
 
 
 def consolidate(report_date: str, dept_data: list[dict]) -> dict:
     """
     Consolidate department reports using hybrid pipeline.
+
 
     Args:
         report_date: Date string in YYYY-MM-DD format
@@ -208,6 +212,7 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
         "department_highlights": [],
         "mtp_narrative": "",
         "mtp_batch_pills": "",
+        "mtp_summary": [],          # Structured MTP items from LLM
         "staff_participation": [],
         "student_participation": [],
         "staff_changes": [],
@@ -329,6 +334,8 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
                     final_report["staff_participation"] = llm_result["staff_participation"]
                 if "student_participation" in llm_result:
                     final_report["student_participation"] = llm_result["student_participation"]
+                if "mtp_summary" in llm_result and isinstance(llm_result["mtp_summary"], list):
+                    final_report["mtp_summary"] = llm_result["mtp_summary"]
             else:
                 print(f"[WARNING] LLM returned unexpected type: {type(llm_result)}")
         except Exception as e:
@@ -337,6 +344,16 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
             traceback.print_exc()
             print("[INFO] Continuing with deterministic data only.")
 
+    # ── Phase 3: Dedicated MTP summary extraction ─────────────────────────
+    # This is a separate small LLM call on just the MTP narrative text,
+    # so it doesn't interfere with the main department summarization call.
+    mtp_narrative = final_report.get("mtp_narrative", "").strip()
+    if mtp_narrative and not final_report.get("mtp_summary"):
+        print("[INFO] Extracting MTP activity summary...")
+        mtp_items = _extract_mtp_summary(mtp_narrative)
+        if mtp_items:
+            final_report["mtp_summary"] = mtp_items
+            print(f"  [OK] Extracted {len(mtp_items)} MTP activity items")
 
     # ── Clean up empty sections ───────────────────────────────────────────
     final_report = _remove_empty_sections(final_report)
@@ -363,9 +380,11 @@ def _summarize_narratives(report_date: str, narrative_blocks: list[dict]) -> dic
         f"{sections}"
     )
 
-    # Rough token estimate: 4 chars ≈ 1 token; if under 20000 tokens do single call
+    # Rough token estimate: 4 chars ≈ 1 token
+    # Keep single calls small (≤6k tokens / ~3 depts) to avoid Gemini empty-response errors
+    # on large payloads. Anything bigger goes through chunked mode (4 depts per chunk).
     estimated_tokens = len(user_message) // 4
-    if estimated_tokens <= 20000:
+    if estimated_tokens <= 6000:
         raw = _llm_call(SUMMARIZE_SYSTEM_PROMPT, user_message)
         return _parse_json(raw, context="narrative_summarization_single")
 
@@ -382,6 +401,7 @@ def _chunked_summarize(report_date: str, narrative_blocks: list[dict]) -> dict:
         "department_highlights": [],
         "staff_participation": [],
         "student_participation": [],
+        "mtp_summary": [],
     }
 
     chunk_size = 4
@@ -409,6 +429,10 @@ def _chunked_summarize(report_date: str, narrative_blocks: list[dict]) -> dict:
                 for key in ["department_highlights", "staff_participation", "student_participation"]:
                     if key in parsed and isinstance(parsed[key], list):
                         merged[key].extend(parsed[key])
+                # Merge mtp_summary (flat list, deduplicate by summary text)
+                for item in parsed.get("mtp_summary", []):
+                    if isinstance(item, dict) and item not in merged["mtp_summary"]:
+                        merged["mtp_summary"].append(item)
 
         except Exception as chunk_err:
             # Chunk failed — retry each department individually
@@ -432,6 +456,9 @@ def _chunked_summarize(report_date: str, narrative_blocks: list[dict]) -> dict:
                         for key in ["department_highlights", "staff_participation", "student_participation"]:
                             if key in parsed and isinstance(parsed[key], list):
                                 merged[key].extend(parsed[key])
+                        for item in parsed.get("mtp_summary", []):
+                            if isinstance(item, dict) and item not in merged["mtp_summary"]:
+                                merged["mtp_summary"].append(item)
                     print(f"       [OK] Retry succeeded for {block['dept_name']}")
 
                 except Exception as dept_err:
@@ -497,6 +524,8 @@ def _remove_empty_sections(report: dict) -> dict:
         report.pop("mtp_narrative", None)
     if not report.get("mtp_batch_pills", "").strip():
         report.pop("mtp_batch_pills", None)
+    if not report.get("mtp_summary", []):
+        report.pop("mtp_summary", None)
 
     return report
 
@@ -567,22 +596,49 @@ def _llm_call(system: str, user: str) -> str:
                         max_output_tokens=16384,
                     ),
                 )
+                # Safely read .text — SDK raises ValueError for empty/blocked responses
+                try:
+                    text = response.text
+                except Exception as text_err:
+                    # Treat as retryable empty-response error
+                    raise ValueError(f"Gemini response.text error: {text_err}") from text_err
+                if not text or not text.strip():
+                    raise ValueError(f"Gemini ({model_name}) returned empty text")
+                
                 print(f"[LLM] Used Gemini fallback ({model_name})")
-                return response.text
+                return text
+
             except Exception as e:
                 last_err = e
-                err_str = str(e)
-                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                err_str = str(e).lower()
+                if "429" in err_str or "resource_exhausted" in err_str:
                     wait = (2 ** attempt) * 5
                     print(f"[LLM] Gemini rate limit ({model_name}), waiting {wait}s...")
                     time.sleep(wait)
                     continue
-                elif "404" in err_str or "not found" in err_str.lower():
-                    break
+                elif "503" in err_str or "unavailable" in err_str:
+                    wait = (2 ** attempt) * 10
+                    print(f"[LLM] Gemini unavailable ({model_name}), waiting {wait}s...")
+                    time.sleep(wait)
+                    continue
+                elif ("model output" in err_str or "output text or tool calls" in err_str
+                        or "empty text" in err_str or "response.text error" in err_str):
+                    wait = (2 ** attempt) * 5
+                    print(f"[LLM] Gemini empty/blocked output ({model_name}), attempt {attempt+1}/3, waiting {wait}s...")
+                    time.sleep(wait)
+                    continue
+                elif "404" in err_str or "not found" in err_str:
+                    break  # Model doesn't exist, try next
                 else:
-                    raise
+                    print(f"[LLM] Gemini error ({model_name}) attempt {attempt+1}/3: {e}")
+                    if attempt < 2:
+                        time.sleep(5)
+                        continue
+                    break  # Move to next model after 3 failures
 
-    raise last_err
+    if last_err:
+        raise last_err
+    raise RuntimeError("All Gemini models exhausted with no valid response")
 
 
 def _parse_json(raw: str, context: str) -> dict | list:
