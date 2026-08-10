@@ -302,6 +302,31 @@ def extract_structured_data(file_bytes: bytes, dept_code: str,
 
 # ── MTP Section IV — Nested table extraction ─────────────────────────────────
 
+# Branch codes that appear in the Batch Pills header row
+_BATCH_PILLS_BRANCH_CODES = {"CSE", "CSBS", "AIML", "IOT", "DS", "CyS", "AIDS", "IT", "ECE", "EEE", "EIE", "ME", "CE", "AE"}
+
+
+def _is_batch_pills_header(row_text: str) -> bool:
+    """Return True if the row looks like the branch-code header for batch pills."""
+    cols = [c.strip() for c in row_text.split("|")]
+    matched = sum(1 for c in cols if c in _BATCH_PILLS_BRANCH_CODES)
+    return matched >= 5  # At least 5 branch codes present
+
+
+def _is_batch_pills_values(row_text: str) -> bool:
+    """Return True if the row is all-numeric values (the pills count row)."""
+    cols = [c.strip() for c in row_text.split("|")]
+    numeric_cols = [c for c in cols if c.isdigit()]
+    return len(numeric_cols) >= 5
+
+
+def _is_hod_row(row_text: str) -> bool:
+    """Return True if the row is a HOD/section label row (not narrative content)."""
+    low = row_text.lower()
+    # Rows like "V | HOD-CSE (CSDS&AIDS):" or "VI | HOD-IT:"
+    return ("hod" in low and "|" in row_text) or ("|" in row_text and re.match(r'^\s*(I{1,3}|IV|V{0,3}I{0,3})\s*\|', row_text))
+
+
 def _extract_mtp_section_iv(table) -> tuple[str, str]:
     """
     Extract MTP Section IV data from a table that contains nested tables.
@@ -312,8 +337,44 @@ def _extract_mtp_section_iv(table) -> tuple[str, str]:
 
     Returns: (mtp_narrative_text, batch_pills_text)
     """
-    mtp_narrative = ""
-    batch_pills = ""
+    mtp_narrative_lines: list[str] = []
+    pills_header: str | None = None
+    pills_values: str | None = None
+    pills_header_text: str = ""  # Title line like "2025-2026 Batch Pills Open Summary"
+
+    def _collect_from_rows(nested_rows: list[list[str]]):
+        nonlocal pills_header, pills_values, pills_header_text
+        for nr in nested_rows:
+            row_text = " | ".join(c for c in nr if c).strip()
+            if not row_text or len(row_text) < 4:
+                continue
+
+            # Skip HOD/roman-numeral label rows (noise)
+            if _is_hod_row(row_text):
+                continue
+
+            # Detect the branch-code header row for Batch Pills
+            if _is_batch_pills_header(row_text):
+                pills_header = row_text
+                continue
+
+            # Detect the numeric values row (must follow after header)
+            if pills_header is not None and pills_values is None and _is_batch_pills_values(row_text):
+                pills_values = row_text
+                continue
+
+            # Detect title line for batch pills section
+            row_lower = row_text.lower()
+            if ("batch" in row_lower and ("pli" in row_lower or "pills" in row_lower)
+                    and ("summary" in row_lower or "open" in row_lower)):
+                pills_header_text = row_text
+                continue
+
+            # Otherwise it's MTP narrative — skip if we've already started pills
+            if pills_header is None:
+                # Not yet in pills section — narrative
+                if row_text and len(row_text) > 5:
+                    mtp_narrative_lines.append(row_text)
 
     for row in table.rows:
         for cell in row.cells:
@@ -323,33 +384,17 @@ def _extract_mtp_section_iv(table) -> tuple[str, str]:
             if cell.tables:
                 for nested_table in cell.tables:
                     nested_rows = _read_table_rows(nested_table)
-                    for nr in nested_rows:
-                        row_text = " ".join(nr).strip()
-                        if not row_text:
-                            continue
+                    _collect_from_rows(nested_rows)
 
-                        row_lower = row_text.lower()
-                        if "batch" in row_lower and ("pli" in row_lower or "pills" in row_lower) and "summary" in row_lower:
-                            # This row is the Batch Pills header
-                            batch_pills = row_text
-                        elif batch_pills:
-                            # We're past the pills header — append to pills
-                            batch_pills += "\n" + row_text
-                        else:
-                            # MTP narrative content
-                            if row_text and len(row_text) > 5:
-                                mtp_narrative += row_text + "\n"
-
-                    # Also check nested-nested tables
+                    # Also check nested-nested tables (deep-embedded pills table)
                     for nrow in nested_table.rows:
                         for ncell in nrow.cells:
                             if ncell.tables:
                                 for deep_table in ncell.tables:
-                                    pills_text = _table_to_text("Batch Pills", deep_table)
-                                    if pills_text.strip():
-                                        batch_pills += "\n" + pills_text
+                                    deep_rows = _read_table_rows(deep_table)
+                                    _collect_from_rows(deep_rows)
 
-            # Non-table cell with MTP narrative
+            # Non-table cell with MTP narrative ("MTP:" label cells)
             elif "mtp:" in cell_text or "mtp (" in cell_text:
                 cell_paragraphs = []
                 for p in cell.paragraphs:
@@ -357,9 +402,18 @@ def _extract_mtp_section_iv(table) -> tuple[str, str]:
                     if t and t.lower() != "mtp:" and len(t) > 3:
                         cell_paragraphs.append(t)
                 if cell_paragraphs:
-                    mtp_narrative += "\n".join(cell_paragraphs)
+                    mtp_narrative_lines.extend(cell_paragraphs)
 
-    return mtp_narrative.strip(), batch_pills.strip()
+    # Build clean batch pills text: title + pipe-table only
+    batch_pills = ""
+    if pills_header_text:
+        batch_pills = pills_header_text + "\n"
+    if pills_header and pills_values:
+        batch_pills += pills_header + "\n" + pills_values
+    elif pills_header:
+        batch_pills += pills_header
+
+    return "\n".join(mtp_narrative_lines).strip(), batch_pills.strip()
 
 
 # ── Table classification ─────────────────────────────────────────────────────
