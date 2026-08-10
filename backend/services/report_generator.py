@@ -410,14 +410,96 @@ def _parse_batch_pills_table(text: str):
 def _build_mtp_sections(doc, report, section_num: int) -> int:
     """Build the MTP highlights and Batch Pills summary sections."""
     mtp_narrative = report.get("mtp_narrative", "").strip()
-    batch_pills = report.get("mtp_batch_pills", "").strip()
+    batch_pills   = report.get("mtp_batch_pills", "").strip()
+    mtp_summary   = report.get("mtp_summary", [])
 
-    if not mtp_narrative and not batch_pills:
+    if not mtp_narrative and not batch_pills and not mtp_summary:
         return section_num
 
     _add_section_heading(doc, section_num, "Mentoring, Training & Placements (MTP)")
 
-    if mtp_narrative:
+    # ── Structured MTP activity items (produced by LLM) ──────────────────────
+    if mtp_summary:
+        _add_sub_heading(doc, "MTP Highlights (Section IV)")
+
+        ACTIVITY_COLORS = {
+            "placement_drive": RGBColor(0xC0, 0x39, 0x2B),   # Red
+            "ppt":             RGBColor(0xC0, 0x39, 0x2B),   # Red
+            "aptitude_test":   RGBColor(0xE6, 0x8A, 0x00),   # Orange
+            "training":        RGBColor(0x27, 0x7D, 0x4E),   # Green
+            "mock_interview":  RGBColor(0x2E, 0x50, 0x90),   # Blue
+            "internship":      RGBColor(0x8E, 0x44, 0xAD),   # Purple
+            "other":           RGBColor(0x55, 0x55, 0x55),   # Gray
+        }
+        ACTIVITY_LABELS = {
+            "placement_drive": "Placement Drive",
+            "ppt":             "Pre-Placement Talk",
+            "aptitude_test":   "Aptitude Test",
+            "training":        "Training Session",
+            "mock_interview":  "Mock Interview",
+            "internship":      "Internship",
+            "other":           "Activity",
+        }
+
+        for item in mtp_summary:
+            if not isinstance(item, dict):
+                continue
+            company       = item.get("company") or ""
+            activity_type = item.get("activity_type", "other")
+            summary_text  = item.get("summary", "").strip()
+            student_count = item.get("student_count")
+            batch         = item.get("batch") or ""
+            status        = item.get("status") or ""
+
+            if not summary_text:
+                continue
+
+            # ── Bullet: ● Company  [Activity Type] ────────────────────────────
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(4)
+            p.paragraph_format.space_after  = Pt(1)
+            p.paragraph_format.left_indent  = Cm(0.5)
+
+            label = company if company else ACTIVITY_LABELS.get(activity_type, "Activity")
+            run = p.add_run(f"● {label}")
+            run.bold = True
+            run.font.size = Pt(9)
+            run.font.color.rgb = DARK_BLUE
+            run.font.name = "Calibri"
+
+            badge_color = ACTIVITY_COLORS.get(activity_type, BODY_GRAY)
+            badge_label = ACTIVITY_LABELS.get(activity_type, activity_type.replace("_", " ").title())
+            run2 = p.add_run(f"  [{badge_label}]")
+            run2.bold = True
+            run2.font.size = Pt(8)
+            run2.font.color.rgb = badge_color
+            run2.font.name = "Calibri"
+
+            # ── Meta line: batch | status | count ─────────────────────────────
+            meta_parts = []
+            if batch:
+                meta_parts.append(batch)
+            if status:
+                meta_parts.append(status)
+            if student_count is not None:
+                meta_parts.append(f"{student_count} students")
+
+            if meta_parts:
+                meta_p = doc.add_paragraph()
+                meta_p.paragraph_format.space_before = Pt(0)
+                meta_p.paragraph_format.space_after  = Pt(1)
+                meta_p.paragraph_format.left_indent  = Cm(1.0)
+                run_m = meta_p.add_run("  " + "  |  ".join(meta_parts))
+                run_m.font.size = Pt(8)
+                run_m.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+                run_m.font.name = "Calibri"
+                run_m.italic = True
+
+            # ── Summary body ───────────────────────────────────────────────────
+            _add_body_text(doc, summary_text)
+
+    elif mtp_narrative:
+        # Fallback: raw narrative when LLM produced no structured items
         _add_sub_heading(doc, "MTP Highlights (Section IV)")
         text = mtp_narrative.replace("[MTP Section IV]", "").strip()
         for line in text.split("\n"):
@@ -425,31 +507,28 @@ def _build_mtp_sections(doc, report, section_num: int) -> int:
             if line:
                 _add_body_text(doc, line)
 
+    # ── Batch Pills table ─────────────────────────────────────────────────────
     if batch_pills:
         _add_sub_heading(doc, "Batch Pills Open Summary")
         text = batch_pills.replace("[Batch Pills Open Summary]", "").strip()
 
-        # Try to render as a proper table
         headers, values = _parse_batch_pills_table(text)
         if headers and values:
             n_cols = min(len(headers), len(values))
             tbl = doc.add_table(rows=2, cols=n_cols)
             tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
             tbl.style = 'Table Grid'
-            # Header row
             for i, h in enumerate(headers[:n_cols]):
                 cell = tbl.rows[0].cells[i]
                 _set_cell_shading(cell, DARK_BLUE_HEX)
                 _set_cell_text(cell, h, bold=True, font_size=8,
                                color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-            # Values row
             for i, v in enumerate(values[:n_cols]):
                 cell = tbl.rows[1].cells[i]
                 _set_cell_shading(cell, LIGHT_GRAY_HEX)
                 _set_cell_text(cell, v, bold=True, font_size=9,
                                color=DARK_BLUE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
         else:
-            # Fallback: plain text lines (skip the raw pill markers)
             for line in text.split("\n"):
                 line = line.strip()
                 if line and not line.startswith("["):
