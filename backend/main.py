@@ -378,29 +378,52 @@ def get_format_schema(dept_code: str):
     import json as json_module
     formats_dir = os.path.join(os.path.dirname(__file__), "formats", "json")
     
-    # Try exact match first, then partial match
-    matched_file = None
+    code_clean = dept_code.strip().lower()
+
+    dept_alias_map = {
+        "cse": "CSE",
+        "ece": "ECE",
+        "eee": "EEE",
+        "eie": "EIE",
+        "it": "IT",
+        "me": "ME",
+        "mech": "ME",
+        "civil": "Civil",
+        "ae": "AE",
+        "aiml": "CSE-AIML&IoT",
+        "cys": "CSE-(CyS, DS) and AI&DS",
+        "chem": "Chemistry",
+        "chemistry": "Chemistry",
+        "eng": "English",
+        "english": "English",
+        "mms": "M&MS",
+        "m&ms": "M&MS",
+        "library": "Library",
+        "mtp": "MTP"
+    }
+    
+    target_dept = dept_alias_map.get(code_clean, dept_code)
+
     for fname in os.listdir(formats_dir):
-        if not fname.endswith(".json"):
+        if not fname.endswith(".json") or fname in ["consolidated_report.json", "attendance.json"]:
             continue
-        name_lower = fname.lower().replace(".json", "")
-        code_lower = dept_code.lower().replace(" ", "_").replace("-", "_").replace("&", "_")
-        if code_lower in name_lower or name_lower.startswith(code_lower):
-            matched_file = os.path.join(formats_dir, fname)
-            break
-    
-    if not matched_file:
-        # Fallback: return CSE format as default
-        fallback = os.path.join(formats_dir, "Civil_CSE_CSE__CyS__DS__and_AI_DS_ECE_IT_DEPT__format_for_CSE____CyS__DS__and_AI_DS.json")
-        if os.path.exists(fallback):
-            matched_file = fallback
-        else:
-            raise HTTPException(status_code=404, detail=f"Format not found for department: {dept_code}")
-    
-    with open(matched_file, "r", encoding="utf-8") as f:
-        schema = json_module.load(f)
-    
-    return schema
+        filepath = os.path.join(formats_dir, fname)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json_module.load(f)
+                depts = [d.lower() for d in data.get("departments", [])]
+                if target_dept.lower() in depts or any(target_dept.lower() in d for d in depts):
+                    return data
+        except Exception:
+            continue
+            
+    # Fallback to engineering_depts.json
+    fallback_path = os.path.join(formats_dir, "engineering_depts.json")
+    if os.path.exists(fallback_path):
+        with open(fallback_path, "r", encoding="utf-8") as f:
+            return json_module.load(f)
+            
+    raise HTTPException(status_code=404, detail=f"Format schema not found for department: {dept_code}")
 
 
 # --- Static Frontend Serving ---
