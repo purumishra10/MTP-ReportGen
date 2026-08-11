@@ -292,10 +292,19 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
             "student_participation_text",
             "other_matters_text",
             "loose_paragraphs",
-            "mtp_narrative",
-            "mtp_batch_pills",
         ]:
             text = dept.get(key, "").strip()
+
+            # Strip attendance mentions out of free-text before the LLM sees it
+            if key == "loose_paragraphs" and text:
+                filtered = []
+                for line in text.split("\n"):
+                    lower = line.lower()
+                    if "attendance" in lower or "on roll" in lower or "present" in lower or "absent" in lower:
+                        continue
+                    filtered.append(line)
+                text = "\n".join(filtered).strip()
+
             if text and _has_real_narrative_content(text):
                 narrative_parts.append(text)
 
