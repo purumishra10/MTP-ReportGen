@@ -1,4 +1,4 @@
-﻿// ── MTP Report Portal — PA Dashboard Script ───────────────────────────────────
+// ── MTP Report Portal — PA Dashboard Script ───────────────────────────────────
 // Handles: file upload consolidation, portal DB generation, tracker, history, modal
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -96,6 +96,49 @@ const uploadResult     = document.getElementById('upload-result');
 const uploadResultMeta = document.getElementById('upload-result-meta');
 const uploadDownloadLink = document.getElementById('upload-download-link');
 
+// ── Consolidation timer helpers ────────────────────────────────────────────────
+const CONSOLIDATION_STAGES = [
+    { at: 0,   msg: 'Uploading department files to server...' },
+    { at: 5,   msg: 'Reading and parsing DOCX files...' },
+    { at: 15,  msg: 'Extracting attendance & infrastructure data...' },
+    { at: 25,  msg: 'Running AI narrative summarisation...' },
+    { at: 45,  msg: 'Summarising department activities with Gemma-4...' },
+    { at: 65,  msg: 'Extracting MTP placement highlights...' },
+    { at: 85,  msg: 'Assembling final DOCX report...' },
+    { at: 100, msg: 'Almost done — finalising report...' },
+    { at: 120, msg: 'Large batch detected — still working, hang tight...' },
+    { at: 150, msg: 'Completing last AI calls — nearly there...' },
+];
+
+let _consolidationTimer = null;
+
+function startConsolidationTimer() {
+    const timerEl   = document.getElementById('upload-timer-display');
+    const statusEl  = document.getElementById('upload-progress-text');
+    const barEl     = document.getElementById('upload-progress-bar');
+    if (!timerEl || !statusEl) return;
+
+    let elapsed = 0;
+    // Simulate progress: goes to ~85% over 150s, never reaches 100% until done
+    const getBarPct = (s) => Math.min(85, (s / 150) * 85);
+
+    _consolidationTimer = setInterval(() => {
+        elapsed++;
+        timerEl.textContent = elapsed + 's';
+        if (barEl) barEl.style.width = getBarPct(elapsed) + '%';
+
+        // Find the most recent stage message
+        const stage = [...CONSOLIDATION_STAGES].reverse().find(s => elapsed >= s.at);
+        if (stage) statusEl.textContent = stage.msg;
+    }, 1000);
+}
+
+function stopConsolidationTimer() {
+    if (_consolidationTimer) { clearInterval(_consolidationTimer); _consolidationTimer = null; }
+    const barEl = document.getElementById('upload-progress-bar');
+    if (barEl) barEl.style.width = '100%';
+}
+
 if (uploadSubmitBtn) {
     uploadSubmitBtn.addEventListener('click', async () => {
         const date  = uploadDateEl ? uploadDateEl.value : '';
@@ -105,8 +148,7 @@ if (uploadSubmitBtn) {
         if (!files || files.length === 0) { showAlert('Please select at least one department file.'); return; }
 
         showLoading(uploadSubmitBtn, uploadLoadingBtn, true);
-        const progressText = document.getElementById('upload-progress-text');
-        if (progressText) progressText.textContent = `Processing ${files.length} file(s)...`;
+        startConsolidationTimer();
         if (uploadResult) uploadResult.classList.add('hidden');
 
         const formData = new FormData();
@@ -128,11 +170,9 @@ if (uploadSubmitBtn) {
 
             const data = await response.json();
             if (data.download_url) {
-                // Fetch the file and trigger download
                 const dlRes = await fetch(data.download_url, { credentials: 'include' });
-                const blobUrl = await downloadBlobResponse(dlRes, `Master_Daily_Report_${date}.docx`);
+                await downloadBlobResponse(dlRes, `Master_Daily_Report_${date}.docx`);
 
-                // Show result panel
                 if (uploadResult) uploadResult.classList.remove('hidden');
                 if (uploadResultMeta) uploadResultMeta.textContent = `${files.length} file(s) processed for ${date}`;
                 if (uploadDownloadLink) {
@@ -147,6 +187,7 @@ if (uploadSubmitBtn) {
         } catch (err) {
             showAlert(`Upload failed: ${err.message}`);
         } finally {
+            stopConsolidationTimer();
             showLoading(uploadSubmitBtn, uploadLoadingBtn, false);
         }
     });

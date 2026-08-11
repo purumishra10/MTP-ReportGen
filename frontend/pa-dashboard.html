@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html class="light" lang="en">
 <head>
     <meta charset="utf-8"/>
@@ -104,9 +104,18 @@
                         <span class="material-symbols-outlined text-[20px]">auto_awesome</span>
                         <span>Upload &amp; Consolidate</span>
                     </button>
-                    <button id="upload-loading-btn" class="hidden w-full py-3.5 bg-surface-container-high text-on-surface-variant rounded-xl font-bold flex items-center justify-center gap-2 cursor-not-allowed">
-                        <span class="material-symbols-outlined animate-spin text-[20px]">refresh</span>
-                        <span id="upload-progress-text">Processing files...</span>
+                    <button id="upload-loading-btn" class="hidden w-full py-3 bg-surface-container-high text-on-surface-variant rounded-xl font-bold cursor-not-allowed">
+                        <div class="flex flex-col items-center gap-1.5 py-1">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined animate-spin text-primary text-[20px]">refresh</span>
+                                <span id="upload-timer-display" class="text-primary font-mono font-bold text-lg">0s</span>
+                            </div>
+                            <span id="upload-progress-text" class="text-xs text-on-surface-variant/80 font-normal">Initialising...</span>
+                            <!-- Progress bar -->
+                            <div class="w-full max-w-xs h-1 bg-surface-container-highest rounded-full overflow-hidden mt-1">
+                                <div id="upload-progress-bar" class="h-full bg-primary rounded-full transition-all duration-1000" style="width:0%"></div>
+                            </div>
+                        </div>
                     </button>
                     <div id="upload-result" class="hidden mt-5 p-4 bg-[#d1f4e0] border border-[#85f8c4] rounded-xl flex items-center justify-between gap-4">
                         <div class="flex items-center gap-3">

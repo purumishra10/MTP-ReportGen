@@ -67,11 +67,10 @@ def _get_gemini_client():
 # Primary model: OpenRouter free Gemma 4
 OPENROUTER_MODEL = "google/gemma-4-31b-it:free"
 
-# Gemini fallback order
+# Gemini fallback order — confirmed working model aliases
 GEMINI_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
+    "models/gemini-flash-latest",
+    "models/gemini-pro-latest",
 ]
 
 
