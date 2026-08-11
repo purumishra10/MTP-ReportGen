@@ -595,6 +595,10 @@ def _build_department_highlights(doc, report, section_num: int, all_images: list
         events = dept_block.get("events", [])
         other_matters = dept_block.get("other_matters", [])
 
+        # MTP has its own dedicated section — never render it in Dept Highlights
+        if dept_code == "mtp":
+            continue
+
         # Skip departments with nothing to show
         if not events and not other_matters:
             continue

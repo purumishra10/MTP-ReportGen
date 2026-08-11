@@ -329,7 +329,12 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
 
             if isinstance(llm_result, dict):
                 if "department_highlights" in llm_result:
-                    final_report["department_highlights"] = llm_result["department_highlights"]
+                    raw_highlights = llm_result["department_highlights"]
+                    # MTP has its own dedicated section — strip it from dept highlights
+                    final_report["department_highlights"] = [
+                        b for b in raw_highlights
+                        if b.get("dept_code", "").lower() != "mtp"
+                    ]
                 if "staff_participation" in llm_result:
                     final_report["staff_participation"] = llm_result["staff_participation"]
                 if "student_participation" in llm_result:
@@ -426,7 +431,13 @@ def _chunked_summarize(report_date: str, narrative_blocks: list[dict]) -> dict:
             parsed = _parse_json(raw, context=f"narrative_chunk_{i}")
 
             if isinstance(parsed, dict):
-                for key in ["department_highlights", "staff_participation", "student_participation"]:
+                if "department_highlights" in parsed and isinstance(parsed["department_highlights"], list):
+                    # MTP has its own section — strip it here too
+                    merged["department_highlights"].extend([
+                        b for b in parsed["department_highlights"]
+                        if b.get("dept_code", "").lower() != "mtp"
+                    ])
+                for key in ["staff_participation", "student_participation"]:
                     if key in parsed and isinstance(parsed[key], list):
                         merged[key].extend(parsed[key])
                 # Merge mtp_summary (flat list, deduplicate by summary text)
@@ -453,7 +464,13 @@ def _chunked_summarize(report_date: str, narrative_blocks: list[dict]) -> dict:
                     parsed = _parse_json(raw, context=f"dept_retry_{block['dept_code']}")
 
                     if isinstance(parsed, dict):
-                        for key in ["department_highlights", "staff_participation", "student_participation"]:
+                        if "department_highlights" in parsed and isinstance(parsed["department_highlights"], list):
+                            # MTP has its own section — filter it out here too
+                            merged["department_highlights"].extend([
+                                b for b in parsed["department_highlights"]
+                                if b.get("dept_code", "").lower() != "mtp"
+                            ])
+                        for key in ["staff_participation", "student_participation"]:
                             if key in parsed and isinstance(parsed[key], list):
                                 merged[key].extend(parsed[key])
                         for item in parsed.get("mtp_summary", []):
