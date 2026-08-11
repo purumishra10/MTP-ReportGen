@@ -120,8 +120,26 @@ def update_status(report_date: str, department: str, status: str):
         WHERE report_date = ? AND department = ?
     ''', (status, report_date, department))
     conn.commit()
+    affected = c.rowcount
     conn.close()
-    return True
+    return affected > 0
+
+def get_record_by_id(record_id: int):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM mtp_records WHERE id = ?", (record_id,))
+    row = c.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def update_status_by_id(record_id: int, status: str):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("UPDATE mtp_records SET status = ? WHERE id = ?", (status, record_id))
+    conn.commit()
+    affected = c.rowcount
+    conn.close()
+    return affected > 0
 
 def get_all_dates():
     conn = get_connection()

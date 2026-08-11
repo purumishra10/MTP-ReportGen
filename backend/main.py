@@ -76,8 +76,10 @@ class DeptSubmitRequest(BaseModel):
     status: str
 
 class ReviewRequest(BaseModel):
-    date: str
-    department: str
+    # Accept review by record id (from PA dashboard) OR by date+department
+    id: Optional[int] = None
+    date: Optional[str] = None
+    department: Optional[str] = None
     status: str
 
 class SummaryRequest(BaseModel):
@@ -150,10 +152,18 @@ def get_tracker(date: str, user: dict = Depends(require_role(["pa", "principal"]
 
 @app.post("/api/tracker/review")
 def review_submission(req: ReviewRequest, user: dict = Depends(require_role(["pa"]))):
-    if req.status not in ["approved", "rejected", "pending_review"]:
+    if req.status not in ["approved", "rejected", "pending_review", "draft"]:
         raise HTTPException(status_code=400, detail="Invalid status")
-        
-    success = update_status(req.date, req.department, req.status)
+
+    # Support review by id (from dashboard) OR by date+department
+    if req.id is not None:
+        from backend.database import get_record_by_id, update_status_by_id
+        success = update_status_by_id(req.id, req.status)
+    elif req.date and req.department:
+        success = update_status(req.date, req.department, req.status)
+    else:
+        raise HTTPException(status_code=400, detail="Provide either 'id' or both 'date' and 'department'")
+
     if not success:
         raise HTTPException(status_code=404, detail="Record not found")
     return {"message": f"Status updated to {req.status}"}
@@ -176,18 +186,38 @@ def api_generate_portal_report(req: dict, user: dict = Depends(require_role(["pa
     date_str = req.get("date")
     if not date_str:
         raise HTTPException(status_code=400, detail="Date required")
-        
+
     try:
         docx_bytes = generate_from_portal(date_str)
         if not docx_bytes:
-            raise HTTPException(status_code=500, detail="Failed to generate report")
-            
+            raise HTTPException(status_code=500, detail="No department submissions found for this date")
+
+        # Save locally
         output_dir = "generated_reports"
-        output_path = os.path.join(output_dir, f"daily_report_{date_str}.docx")
+        filename_out = f"daily_report_{date_str}.docx"
+        output_path = os.path.join(output_dir, filename_out)
         with open(output_path, "wb") as f:
             f.write(docx_bytes)
-            
-        return {"message": "Generated successfully", "download_url": f"/reports/download/daily_report_{date_str}.docx"}
+
+        # Upload to Supabase if enabled
+        if supabase_client.is_enabled():
+            try:
+                supabase_client.save_report(
+                    report_date=date_str,
+                    departments=[],
+                    docx_bytes=docx_bytes,
+                    filename=filename_out,
+                    metadata={"source": "portal"}
+                )
+            except Exception as sup_err:
+                print(f"[WARNING] Supabase upload failed: {sup_err}")
+
+        # Stream the file directly in the response
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{filename_out}"'}
+        )
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
@@ -222,8 +252,9 @@ def save_summary(req: SummaryRequest, user: dict = Depends(require_role(["princi
 async def api_consolidate_files(
     report_date: str = Form(...),
     files: List[UploadFile] = File(...),
+    user: dict = Depends(require_role(["pa"])),
 ):
-    """File upload endpoint — uses hybrid pipeline (deterministic + LLM)."""
+    """File upload endpoint (PA only) — uses hybrid pipeline (deterministic + LLM)."""
     if not report_date:
         raise HTTPException(status_code=400, detail="report_date is required")
 
