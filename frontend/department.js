@@ -337,7 +337,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             statusChip.innerText = statusText;
 
             let parsed = null;
-            if (typeof data.content === 'string' && data.content.trim().startswith('{')) {
+            if (typeof data.content === 'string' && data.content.trim().startsWith('{')) {
                 try { parsed = JSON.parse(data.content); } catch(e) {}
             }
 

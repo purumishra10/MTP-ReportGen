@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchTrackerData() {
         try {
-            const res = await fetch(`/api/tracker/${dateInput.value}`);
+            const res = await fetch(`/api/tracker/${dateInput.value}`, { credentials: 'include' });
             const data = await res.json();
             
             let html = '';
@@ -63,10 +63,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchSummary() {
         try {
-            const res = await fetch(`/api/principal/summary/${dateInput.value}`);
+            const res = await fetch(`/api/principal/summary/${dateInput.value}`, { credentials: 'include' });
             const data = await res.json();
-            summaryEditor.innerHTML = data.record ? data.record.content : '';
-            saveStatus.innerText = (data.record && data.record.status === 'finalized') ? "Finalized" : (data.record ? "Draft Saved" : "No summary yet");
+            if (data.record) {
+                summaryEditor.innerHTML = data.record.content || '';
+                saveStatus.innerText = data.record.status === 'finalized' ? 'Finalized ✓' : 'Draft Saved';
+            } else {
+                summaryEditor.innerHTML = '';
+                saveStatus.innerText = 'No summary yet';
+            }
         } catch (e) {
             console.error(e);
         }
@@ -76,18 +81,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const content = summaryEditor.innerHTML;
         const date = dateInput.value;
         
-        saveStatus.innerText = "Saving...";
+        saveStatus.innerText = 'Saving...';
         try {
             const res = await fetch('/api/principal/summary', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ date, content, status: 'finalized' })
             });
             if (res.ok) {
-                saveStatus.innerText = "Summary Finalized";
+                saveStatus.innerText = 'Summary Finalized ✓';
+            } else {
+                const j = await res.json();
+                saveStatus.innerText = `Error: ${j.detail || 'Save failed'}`;
             }
         } catch (e) {
-            saveStatus.innerText = "Error Saving";
+            saveStatus.innerText = 'Error saving';
         }
     });
 

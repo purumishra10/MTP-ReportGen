@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchArchive() {
         try {
-            const res = await fetch('/api/history');
+            const res = await fetch('/api/history', { credentials: 'include' });
             const data = await res.json();
             
             if (data.dates && data.dates.length > 0) {
@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { console.error('No summary found'); }
 
             // Fetch Approved Records
-            const recordsRes = await fetch(`/api/tracker/${date}`);
+            const recordsRes = await fetch(`/api/tracker/${date}`, { credentials: 'include' });
             const recordsData = await recordsRes.json();
 
             let contentHtml = '';
@@ -94,20 +94,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
             reportBody.innerHTML = contentHtml;
 
-            // Update Download Button
+            // Update Download Button — /api/generate now streams DOCX directly
             downloadBtn.onclick = async () => {
-                const res = await fetch('/api/generate', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ date })
-                });
-                if (res.ok) {
+                try {
+                    const res = await fetch('/api/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ date })
+                    });
+                    if (!res.ok) {
+                        const j = await res.json();
+                        alert(`Error: ${j.detail || 'Failed to generate report'}`);
+                        return;
+                    }
                     const blob = await res.blob();
-                    const url = window.URL.createObjectURL(blob);
+                    const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
                     a.download = `Master_Report_${date}.docx`;
+                    a.style.display = 'none';
+                    document.body.appendChild(a);
                     a.click();
+                    URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } catch (e) {
+                    alert(`Download error: ${e.message}`);
                 }
             };
 
