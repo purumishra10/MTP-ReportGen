@@ -317,17 +317,7 @@ def _build_overall_attendance(doc, report, section_num: int) -> int:
             _set_cell_text(cell, val, bold=True, font_size=9,
                            color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
-    # ── Staff chart ───────────────────────────────────────────────────────────
-    charts = report.get("attendance_charts", [])
-    if len(charts) > 0 and os.path.exists(charts[0]):
-        doc.add_picture(charts[0], width=Inches(6.0))
-        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # ── Student attendance + chart ────────────────────────────────────────────
-    _build_student_attendance(doc, report)
-    if len(charts) > 1 and os.path.exists(charts[1]):
-        doc.add_picture(charts[1], width=Inches(6.0))
-        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     # ── Library staff attendance ──────────────────────────────────────────────
     lib = report.get("attendance", {}).get("library")
