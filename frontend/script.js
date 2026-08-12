@@ -1,6 +1,28 @@
 // ── MTP Report Portal — PA Dashboard Script ───────────────────────────────────
 // Handles: file upload consolidation, portal DB generation, tracker, history, modal
 
+// ── Sidebar Toggle ────────────────────────────────────────────────────────────
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const mainContent = document.getElementById('main-content');
+    if (!sidebar) return;
+    sidebar.classList.toggle('collapsed');
+    if (mainContent) mainContent.classList.toggle('sidebar-collapsed');
+    // Persist state
+    const isCollapsed = sidebar.classList.contains('collapsed');
+    localStorage.setItem('sidebar_collapsed', isCollapsed ? '1' : '0');
+}
+
+// Restore sidebar state on load
+document.addEventListener('DOMContentLoaded', () => {
+    if (localStorage.getItem('sidebar_collapsed') === '1') {
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.getElementById('main-content');
+        if (sidebar) sidebar.classList.add('collapsed');
+        if (mainContent) mainContent.classList.add('sidebar-collapsed');
+    }
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function showAlert(message, type = 'error') {
     const banner = document.getElementById('alert-banner');

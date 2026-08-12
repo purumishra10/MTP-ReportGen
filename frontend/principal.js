@@ -1,3 +1,26 @@
+// ── Sidebar Toggle ────────────────────────────────────────────────────────────
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const mainContent = document.getElementById('main-content');
+    if (!sidebar) return;
+    sidebar.classList.toggle('collapsed');
+    if (mainContent) mainContent.classList.toggle('sidebar-collapsed');
+    const isCollapsed = sidebar.classList.contains('collapsed');
+    localStorage.setItem('sidebar_collapsed', isCollapsed ? '1' : '0');
+}
+
+// Restore sidebar state immediately
+(function() {
+    if (localStorage.getItem('sidebar_collapsed') === '1') {
+        document.addEventListener('DOMContentLoaded', () => {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            if (sidebar) sidebar.classList.add('collapsed');
+            if (mainContent) mainContent.classList.add('sidebar-collapsed');
+        });
+    }
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
     const dateInput = document.getElementById('dash-date');
     const trackerGrid = document.getElementById('tracker-grid');

@@ -35,7 +35,7 @@
     <header class="bg-white flex justify-between items-center w-full px-8 h-20 fixed top-0 z-50 border-b border-outline-variant/20">
         <div class="flex items-center space-x-6">
             <div class="flex items-center space-x-3">
-                <div class="w-10 h-10 academic-gradient rounded-lg flex items-center justify-center text-white font-bold text-xl">V</div>
+                <img src="vnrvjiet_logo.png" alt="VNRVJIET Logo" class="w-10 h-10 rounded-lg object-cover">
                 <span class="text-primary font-bold text-xl font-headline tracking-wide uppercase">Institutional Portal</span>
             </div>
             <div class="h-8 w-px bg-surface-container-high"></div>
@@ -58,21 +58,27 @@
     </header>
 
     <div class="flex pt-20">
-        <aside class="fixed left-0 top-0 h-screen flex flex-col py-8 px-4 bg-[#f1f4f6] w-64 z-40 mt-20">
+        <aside id="sidebar" class="sidebar fixed left-0 top-0 h-screen flex flex-col py-8 px-4 bg-[#f1f4f6] z-40 mt-20">
+            <div class="flex items-center justify-between px-4 mb-4">
+                <div class="sidebar-header"></div>
+                <button class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Toggle sidebar">
+                    <span class="material-symbols-outlined">chevron_left</span>
+                </button>
+            </div>
             <nav class="flex-1 space-y-2">
                 <a class="flex items-center space-x-3 px-4 py-3 bg-[#d5e0f7] text-primary border-l-4 border-primary text-sm font-bold rounded-r-lg" href="#">
                     <span class="material-symbols-outlined">dashboard</span>
-                    <span>Dashboard</span>
+                    <span class="sidebar-label">Dashboard</span>
                 </a>
                 <a class="flex items-center space-x-3 px-4 py-3 text-secondary hover:bg-surface-container-high rounded-md text-sm font-medium transition-colors" href="archive.html">
                     <span class="material-symbols-outlined">inventory_2</span>
-                    <span>Report Archive</span>
+                    <span class="sidebar-label">Report Archive</span>
                 </a>
             </nav>
-            <div class="mt-auto px-4 py-4 bg-surface-container-high rounded-xl mb-24">
+            <div class="sidebar-footer mt-auto px-4 py-4 bg-surface-container-high rounded-xl mb-24">
                 <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-xs text-white font-bold">JD</div>
-                    <div class="flex flex-col">
+                    <div class="sidebar-avatar w-8 h-8 rounded-full bg-primary flex items-center justify-center text-xs text-white font-bold">JD</div>
+                    <div class="sidebar-label flex flex-col">
                         <span class="text-xs font-bold">Dr. C.D. Naidu</span>
                         <span class="text-[10px] text-secondary/60">Principal</span>
                     </div>
@@ -80,7 +86,7 @@
             </div>
         </aside>
 
-        <main class="ml-64 flex-1 p-10 min-h-screen">
+        <main id="main-content" class="main-content flex-1 p-10 min-h-screen">
             <div class="mb-12 flex justify-between items-end">
                 <div>
                     <h1 class="font-headline text-4xl font-extrabold text-primary tracking-tight mb-2">Institutional Dashboard</h1>

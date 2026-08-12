@@ -62,7 +62,7 @@
 <header class="bg-white flex justify-between items-center w-full px-8 h-20 fixed top-0 z-50 border-b border-surface-container-low">
     <div class="flex items-center space-x-6">
         <div class="flex items-center space-x-3">
-            <div class="w-10 h-10 academic-gradient rounded-lg flex items-center justify-center text-white font-bold text-xl">V</div>
+            <img src="vnrvjiet_logo.png" alt="VNRVJIET Logo" class="w-10 h-10 rounded-lg object-cover">
             <span class="text-primary font-bold text-xl font-headline tracking-wide uppercase">VNRVJIET</span>
         </div>
         <div class="h-8 w-px bg-surface-container-high"></div>
@@ -87,10 +87,15 @@
 <div class="flex pt-20 flex-1">
     
     <!-- SideNavBar -->
-    <aside class="fixed left-0 top-0 h-screen flex flex-col py-6 px-4 bg-surface-container-low w-64 z-40 mt-20">
-        <div class="px-4 mb-8">
-            <h2 class="font-headline font-extrabold text-primary text-lg" id="sidebar-dept-name">CSE Dept</h2>
-            <p class="text-xs text-slate-600 font-medium">Daily Report Entry</p>
+    <aside id="sidebar" class="sidebar fixed left-0 top-0 h-screen flex flex-col py-6 px-4 bg-surface-container-low z-40 mt-20">
+        <div class="flex items-center justify-between px-4 mb-4">
+            <div class="sidebar-header">
+                <h2 class="font-headline font-extrabold text-primary text-lg" id="sidebar-dept-name">CSE Dept</h2>
+                <p class="text-xs text-slate-600 font-medium">Daily Report Entry</p>
+            </div>
+            <button class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Toggle sidebar">
+                <span class="material-symbols-outlined">chevron_left</span>
+            </button>
         </div>
         
         <!-- Section Quick Nav -->
@@ -98,17 +103,17 @@
             <!-- Dynamically populated -->
         </nav>
         
-        <div class="mt-auto p-4 bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/10 mb-24">
-            <p class="text-[10px] font-bold text-on-surface-variant uppercase mb-2">System Status</p>
+        <div class="sidebar-footer mt-auto p-4 bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/10 mb-24">
+            <p class="sidebar-label text-[10px] font-bold text-on-surface-variant uppercase mb-2">System Status</p>
             <div class="flex items-center gap-2">
                 <div class="w-2 h-2 rounded-full bg-on-tertiary-container animate-pulse"></div>
-                <span class="text-xs text-on-tertiary-container font-medium">All Servers Operational</span>
+                <span class="sidebar-label text-xs text-on-tertiary-container font-medium">All Servers Operational</span>
             </div>
         </div>
     </aside>
 
     <!-- Main Content Canvas -->
-    <main class="ml-64 flex-1 p-10 min-h-screen">
+    <main id="main-content" class="main-content flex-1 p-10 min-h-screen">
         
         <!-- Header -->
         <header class="flex justify-between items-end mb-8">

@@ -1,3 +1,26 @@
+// ── Sidebar Toggle ────────────────────────────────────────────────────────────
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const mainContent = document.getElementById('main-content');
+    if (!sidebar) return;
+    sidebar.classList.toggle('collapsed');
+    if (mainContent) mainContent.classList.toggle('sidebar-collapsed');
+    const isCollapsed = sidebar.classList.contains('collapsed');
+    localStorage.setItem('sidebar_collapsed', isCollapsed ? '1' : '0');
+}
+
+// Restore sidebar state immediately
+(function() {
+    if (localStorage.getItem('sidebar_collapsed') === '1') {
+        document.addEventListener('DOMContentLoaded', () => {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            if (sidebar) sidebar.classList.add('collapsed');
+            if (mainContent) mainContent.classList.add('sidebar-collapsed');
+        });
+    }
+})();
+
 document.addEventListener('DOMContentLoaded', async () => {
     const submitBtn = document.getElementById('submit-dept-btn');
     const saveDraftBtn = document.getElementById('save-draft-btn');
@@ -56,7 +79,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             navHTML += `
                 <a href="#section-${idx}" class="nav-link flex items-center space-x-3 px-4 py-2.5 text-slate-600 hover:bg-surface-container-high transition-colors rounded-md text-[13px]">
                     <span class="material-symbols-outlined text-[18px]">${icon}</span>
-                    <span class="truncate" title="${title}">${title.replace(':', '').substring(0, 22)}</span>
+                    <span class="sidebar-label truncate" title="${title}">${title.replace(':', '').substring(0, 22)}</span>
                 </a>
             `;
 
@@ -183,7 +206,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 e.preventDefault();
                 const target = document.querySelector(link.getAttribute('href'));
                 if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    const headerOffset = 100;
+                    const elementPosition = target.getBoundingClientRect().top;
+                    const offsetPosition = elementPosition + window.scrollY - headerOffset;
+                    window.scrollTo({
+                        top: offsetPosition,
+                        behavior: 'smooth'
+                    });
                 }
             });
         });

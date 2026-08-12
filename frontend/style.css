@@ -365,6 +365,114 @@
    RESPONSIVE
    ═══════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════
+   GLOBAL NO HORIZONTAL SCROLL
+   ═══════════════════════════════════════════ */
+
+html, body {
+    overflow-x: hidden;
+}
+
+main {
+    overflow-x: hidden;
+}
+
+
+/* ═══════════════════════════════════════════
+   COLLAPSIBLE SIDEBAR
+   ═══════════════════════════════════════════ */
+
+.sidebar {
+    width: 256px;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
+.sidebar.collapsed {
+    width: 72px;
+}
+
+.sidebar .sidebar-label {
+    opacity: 1;
+    white-space: nowrap;
+    transition: opacity 0.2s ease 0.1s;
+}
+
+.sidebar.collapsed .sidebar-label {
+    opacity: 0;
+    width: 0;
+    overflow: hidden;
+    transition: opacity 0.15s ease;
+}
+
+.sidebar.collapsed .sidebar-header {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-footer {
+    padding: 8px;
+    justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-footer > div {
+    justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-footer .sidebar-label {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-footer .sidebar-avatar {
+    margin: 0 auto;
+}
+
+.sidebar.collapsed nav a {
+    justify-content: center;
+}
+
+.sidebar.collapsed nav a span.material-symbols-outlined {
+    margin: 0;
+}
+
+.sidebar-toggle-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid #e2e4e9;
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.sidebar-toggle-btn:hover {
+    background: #f1f4f6;
+    border-color: #c4c6cf;
+}
+
+.sidebar-toggle-btn .material-symbols-outlined {
+    font-size: 18px;
+    color: #43474e;
+    transition: transform 0.3s ease;
+}
+
+.sidebar.collapsed .sidebar-toggle-btn .material-symbols-outlined {
+    transform: rotate(180deg);
+}
+
+.main-content {
+    margin-left: 256px;
+    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.main-content.sidebar-collapsed {
+    margin-left: 72px;
+}
+
+
 @media (max-width: 1024px) {
     .table-wrapper {
         overflow-x: auto;
