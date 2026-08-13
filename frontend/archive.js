@@ -12,6 +12,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const role = localStorage.getItem('user_role');
     if (role) roleTag.innerText = role.charAt(0).toUpperCase() + role.slice(1);
 
+    // Back to Dashboard button - role-aware navigation
+    const backBtn = document.getElementById('back-to-dashboard-btn');
+    if (backBtn) {
+        backBtn.addEventListener('click', () => {
+            if (role === 'pa') {
+                window.location.href = 'pa-dashboard.html';
+            } else if (role === 'principal') {
+                window.location.href = 'principal.html';
+            } else {
+                window.location.href = 'pa-dashboard.html';
+            }
+        });
+    }
+
     fetchArchive();
 
     async function fetchArchive() {
