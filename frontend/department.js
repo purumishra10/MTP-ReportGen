@@ -87,7 +87,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const titleLower = title.toLowerCase();
             const isBatchPills = titleLower.includes('batch pills');
             const isStaffAttendance = titleLower.includes('staff attendance');
-            const isStudentAttendance = titleLower.includes('students attendance') || titleLower.includes('b.tech students') || titleLower.includes('m.tech students');
+            const isMTechAttendance = titleLower.includes('m.tech students');
+            const isMinorDegreeAttendance = titleLower.includes('minor degree');
+            const isStudentAttendance = titleLower.includes('students attendance') || titleLower.includes('b.tech students') || isMTechAttendance || isMinorDegreeAttendance;
 
             let thead = '';
             let tbody = '';
@@ -105,6 +107,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     initialRows = [
                         { "Category": "Teaching" },
                         { "Category": "Non-Teaching" }
+                    ];
+                } else if (isMTechAttendance || isMinorDegreeAttendance) {
+                    // M.Tech and Minor Degree are 2-year programs
+                    initialRows = [
+                        { "Year": "I Year" },
+                        { "Year": "II Year" }
                     ];
                 } else if (isStudentAttendance) {
                     initialRows = [
@@ -159,7 +167,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             </tbody>
                         </table>
                     </div>
-                    ${!isBatchPills && !isStaffAttendance && !isStudentAttendance ? `
+                    ${!isBatchPills && !isStaffAttendance && !isStudentAttendance && !isMTechAttendance && !isMinorDegreeAttendance ? `
                     <div class="table-actions mt-3 flex gap-2">
                         <button class="add-row-btn px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded flex items-center gap-1" onclick="addRow(this)">
                             <span class="material-symbols-outlined text-[16px]">add</span> Add Row
@@ -188,18 +196,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sections = document.querySelectorAll('.section-card');
         const navLinks = document.querySelectorAll('.nav-link');
 
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    navLinks.forEach(l => l.classList.remove('active'));
-                    const id = entry.target.id;
-                    const link = document.querySelector(`.nav-link[href="#${id}"]`);
-                    if (link) link.classList.add('active');
-                }
+        // Scroll-based active nav highlight (replaces IntersectionObserver for reliability)
+        function updateActiveNav() {
+            let activeIdx = 0;
+            const offset = 160; // header height + margin
+            sections.forEach((sec, idx) => {
+                const rect = sec.getBoundingClientRect();
+                if (rect.top <= offset) activeIdx = idx;
             });
-        }, { threshold: 0, rootMargin: '-20% 0px -40% 0px' });
+            navLinks.forEach(l => l.classList.remove('active'));
+            if (navLinks[activeIdx]) navLinks[activeIdx].classList.add('active');
+        }
 
-        sections.forEach(s => observer.observe(s));
+        window.addEventListener('scroll', updateActiveNav, { passive: true });
+        updateActiveNav(); // initial sync
 
         navLinks.forEach(link => {
             link.addEventListener('click', (e) => {
@@ -261,7 +271,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     statusChip.innerText = "Submitted";
                     statusChip.parentNode.className = "flex items-center gap-2 bg-[#eef4ff] px-4 py-2 rounded-full border border-[#bfdbfe]";
                     statusChip.className = "text-xs font-bold text-[#1e40af] uppercase tracking-widest";
-                    alert('Report submitted successfully to PA Office for review!');
+                    // Show inline green confirmation text
+                    const confirmEl = document.getElementById('submit-confirmation');
+                    if (confirmEl) {
+                        confirmEl.textContent = '✓ Report submitted successfully to PA Office for review!';
+                        confirmEl.classList.remove('hidden');
+                        setTimeout(() => confirmEl.classList.add('hidden'), 6000);
+                    }
                 }
             } else {
                 const err = await response.json();

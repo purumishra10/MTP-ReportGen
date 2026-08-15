@@ -328,22 +328,28 @@ window.openReviewModal = function(id, dept, date, status) {
 
     // Load content
     const contentArea = document.getElementById('modal-content-area');
-    contentArea.textContent = 'Loading...';
+    contentArea.innerHTML = '<p style="color:#64748b">Loading...</p>';
 
     fetch(`/api/tracker/${date}`, { credentials: 'include' })
         .then(r => r.json())
         .then(data => {
             const record = data.records?.find(r => r.id === id);
-            if (!record) { contentArea.textContent = 'Record not found.'; return; }
+            if (!record) { contentArea.innerHTML = '<p>Record not found.</p>'; return; }
             let content = record.content || '(empty)';
-            // Pretty-print JSON if possible
+
+            // Try to parse as structured JSON and render human-readable tables
             try {
                 const parsed = JSON.parse(content);
-                content = JSON.stringify(parsed, null, 2);
+                if (parsed && parsed.sections && Array.isArray(parsed.sections)) {
+                    contentArea.innerHTML = renderSectionsAsHTML(parsed.sections);
+                    return;
+                }
             } catch {}
+
+            // Fallback: show as plain text
             contentArea.textContent = content;
         })
-        .catch(() => { contentArea.textContent = 'Failed to load content.'; });
+        .catch(() => { contentArea.innerHTML = '<p>Failed to load content.</p>'; });
 
     // Button states
     const approveBtn = document.getElementById('modal-approve-btn');
@@ -454,6 +460,47 @@ if (monthlyBtn) {
         } catch { showAlert('Monthly report generation failed.'); }
         finally { showLoading(monthlyBtn, monthlyLoadingBtn, false); }
     });
+}
+
+// ── Render Sections as Human-Readable HTML ────────────────────────────────────
+function renderSectionsAsHTML(sections) {
+    let html = '';
+    sections.forEach(sec => {
+        const title = sec.title || 'Untitled Section';
+        html += `<div style="margin-bottom:24px;">`;
+        html += `<h3 style="font-family:Manrope,sans-serif;font-size:15px;font-weight:700;color:#002045;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #e2e8f0;">${escapeHTML(title)}</h3>`;
+
+        if (sec.nil) {
+            html += `<p style="color:#94a3b8;font-style:italic;font-size:13px;">Nil</p>`;
+        } else if (!sec.rows || sec.rows.length === 0) {
+            html += `<p style="color:#94a3b8;font-style:italic;font-size:13px;">No entries</p>`;
+        } else {
+            // Build a table from rows
+            const headers = Object.keys(sec.rows[0]);
+            html += `<table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;">`;
+            html += `<thead><tr>`;
+            headers.forEach(h => {
+                html += `<th style="background:#f8fafc;color:#475569;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;padding:10px 12px;text-align:left;border-bottom:2px solid #e2e8f0;white-space:nowrap;">${escapeHTML(h)}</th>`;
+            });
+            html += `</tr></thead><tbody>`;
+            sec.rows.forEach(row => {
+                html += `<tr>`;
+                headers.forEach(h => {
+                    const val = row[h] || '';
+                    html += `<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;color:#334155;vertical-align:top;">${escapeHTML(val) || '<span style="color:#cbd5e1">—</span>'}</td>`;
+                });
+                html += `</tr>`;
+            });
+            html += `</tbody></table>`;
+        }
+        html += `</div>`;
+    });
+    return html;
+}
+
+function escapeHTML(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
