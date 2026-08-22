@@ -146,7 +146,7 @@ def submit_dept_report(req: DeptSubmitRequest, user: dict = Depends(require_role
 # --- PA Office Endpoints ---
 
 @app.get("/api/tracker/{date}")
-def get_tracker(date: str, user: dict = Depends(require_role(["pa", "principal"]))):
+def get_tracker(date: str, user: dict = Depends(require_role(["pa", "principal", "head_office"]))):
     records = get_records_by_date(date)
     return {"records": records}
 
@@ -182,7 +182,7 @@ def clear_date(date: str, user: dict = Depends(require_role(["pa"]))):
     return {"message": f"Deleted records for {date}"}
 
 @app.post("/api/generate")
-def api_generate_portal_report(req: dict, user: dict = Depends(require_role(["pa"]))):
+def api_generate_portal_report(req: dict, user: dict = Depends(require_role(["pa", "principal", "head_office"]))):
     date_str = req.get("date")
     if not date_str:
         raise HTTPException(status_code=400, detail="Date required")
@@ -435,6 +435,7 @@ def get_format_schema(dept_code: str):
     
     target_dept = dept_alias_map.get(code_clean, dept_code)
 
+    fallback_data = None
     for fname in os.listdir(formats_dir):
         if not fname.endswith(".json") or fname in ["consolidated_report.json", "attendance.json"]:
             continue
@@ -443,16 +444,15 @@ def get_format_schema(dept_code: str):
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json_module.load(f)
                 depts = [d.lower() for d in data.get("departments", [])]
-                if target_dept.lower() in depts or any(target_dept.lower() in d for d in depts):
+                if target_dept.lower() in depts:
                     return data
+                if fname == "engineering_depts.json":
+                    fallback_data = data
         except Exception:
             continue
             
-    # Fallback to engineering_depts.json
-    fallback_path = os.path.join(formats_dir, "engineering_depts.json")
-    if os.path.exists(fallback_path):
-        with open(fallback_path, "r", encoding="utf-8") as f:
-            return json_module.load(f)
+    if fallback_data:
+        return fallback_data
             
     raise HTTPException(status_code=404, detail=f"Format schema not found for department: {dept_code}")
 

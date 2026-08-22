@@ -24,6 +24,33 @@
             ]
         },
         {
+            "section_title": "B.Tech Students Attendance:",
+            "columns": [
+                "Year",
+                "Rolls",
+                "Present",
+                "Absent"
+            ]
+        },
+        {
+            "section_title": "M.Tech Students Attendance:",
+            "columns": [
+                "Year",
+                "Rolls",
+                "Present",
+                "Absent"
+            ]
+        },
+        {
+            "section_title": "Minor Degree Students Attendance:",
+            "columns": [
+                "Year",
+                "Rolls",
+                "Present",
+                "Absent"
+            ]
+        },
+        {
             "section_title": "Infrastructure issues or Maintenance:",
             "columns": [
                 "S.No.",

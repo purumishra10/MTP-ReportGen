@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ─── Fetch Department Schema ────────────────────────────────
     async function loadAndRenderFormat() {
         try {
-            const response = await fetch(`/api/formats/${deptCode}`);
+            const response = await fetch(`/api/formats/${deptCode}`, { credentials: 'include' });
             const schema = await response.json();
             if (schema && schema.format) {
                 activeSchema = schema;
@@ -255,6 +255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const response = await fetch('/api/department/submit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({
                     date: dateVal,
                     content: JSON.stringify(payload),
@@ -369,7 +370,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!dateVal) return;
 
         try {
-            const resp = await fetch(`/api/department/submission/${dateVal}`);
+            const resp = await fetch(`/api/department/submission/${dateVal}`, { credentials: 'include' });
             if (!resp.ok) return;
             const data = await resp.json();
 
@@ -380,6 +381,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             let statusText = (data.status || 'draft').toUpperCase();
             statusChip.innerText = statusText;
+
+            resetForm();
 
             let parsed = null;
             if (typeof data.content === 'string' && data.content.trim().startsWith('{')) {
@@ -477,6 +480,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 // GLOBAL FUNCTIONS (called from onclick in HTML)
 // ═══════════════════════════════════════════════════════════
 
+function logoutPortal() {
+    fetch('/api/logout', { method: 'POST', credentials: 'include' }).finally(() => {
+        localStorage.clear();
+        window.location.href = 'index.html';
+    });
+}
+
 function toggleSection(headerEl) {
     const card = headerEl.closest('.section-card');
     card.classList.toggle('collapsed');
@@ -553,7 +563,7 @@ function getInputHTML(colName, dept) {
         return `<input type="date" class="form-input">`;
     }
     
-    if (name.includes('rolls') || name.includes('absent') || name.includes('participants') || name.includes('no’s') || name.includes('no. of')) {
+    if (name.includes('rolls') || name.includes('absent') || name.includes('present') || name.includes('participants') || name.includes('no’s') || name.includes("no's") || name.includes('no. of')) {
         return `<input type="number" class="form-input text-center" placeholder="${placeholder}">`;
     }
     

@@ -51,7 +51,7 @@
                     Principal Office
                 </div>
             </div>
-            <button onclick="localStorage.clear(); window.location.href='index.html'" class="bg-primary text-white px-5 py-2 rounded-md text-sm font-bold academic-gradient hover:opacity-90 transition-all active:scale-[0.98]">
+            <button onclick="fetch('/api/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.clear();window.location.href='index.html'})" class="bg-primary text-white px-5 py-2 rounded-md text-sm font-bold academic-gradient hover:opacity-90 transition-all active:scale-[0.98]">
                 Logout
             </button>
         </div>

@@ -42,6 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchSummary();
     });
 
+    let lastRecords = [];
+
     async function fetchTrackerData() {
         try {
             const res = await fetch(`/api/tracker/${dateInput.value}`, { credentials: 'include' });
@@ -49,8 +51,9 @@ document.addEventListener('DOMContentLoaded', () => {
             
             let html = '';
             let count = 0;
-            if (data.records && data.records.length > 0) {
-                data.records.forEach(r => {
+            lastRecords = data.records || [];
+            if (lastRecords.length > 0) {
+                lastRecords.forEach(r => {
                     let statusChip = '';
                     let actionBtn = '';
                     
@@ -60,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         statusChip = `<span class="bg-secondary-container text-primary px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight">Pending PA</span>`;
                     } else if (r.status === 'approved') {
                         statusChip = `<span class="bg-primary text-white px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight">Approved</span>`;
-                        actionBtn = `<button onclick="viewReport('${r.department}', \`${r.content.replace(/`/g, '\\`')}\`)" class="w-full py-2 text-xs font-bold text-primary border border-outline-variant rounded hover:bg-white transition-colors">View Report</button>`;
+                        actionBtn = `<button onclick="viewReport('${r.department}')" class="w-full py-2 text-xs font-bold text-primary border border-outline-variant rounded hover:bg-white transition-colors">View Report</button>`;
                         count++;
                     }
 
@@ -70,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <h4 class="font-headline font-extrabold text-lg text-primary">${r.department}</h4>
                             ${statusChip}
                         </div>
-                        <p class="text-[11px] text-secondary/60 line-clamp-2 mb-4">${r.content}</p>
+                        <p class="text-[11px] text-secondary/60 line-clamp-2 mb-4">${previewContent(r.content)}</p>
                         ${actionBtn || '<div class="h-8"></div>'}
                     </div>`;
                 });
@@ -123,13 +126,66 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    window.viewReport = (dept, content) => {
+    window.viewReport = (dept) => {
         modalTitle.innerText = `${dept} Department Report - ${dateInput.value}`;
-        modalContent.innerHTML = content.replace(/\\n/g, '<br/>');
+        const record = lastRecords.find(r => r.department === dept);
+        const content = record ? record.content : '';
+        try {
+            const parsed = JSON.parse(content);
+            if (parsed && parsed.sections) {
+                modalContent.innerHTML = renderSectionsAsHTML(parsed.sections);
+            } else {
+                modalContent.textContent = content || '(empty)';
+            }
+        } catch {
+            modalContent.textContent = content || '(empty)';
+        }
         reviewModal.classList.remove('hidden');
     };
 
     window.closeReviewModal = () => {
         reviewModal.classList.add('hidden');
     };
+
+    function previewContent(content) {
+        if (!content) return '';
+        try {
+            const parsed = JSON.parse(content);
+            if (parsed && parsed.sections) {
+                const filled = parsed.sections.filter(s => !s.nil && s.rows && s.rows.length).length;
+                return `${filled} section(s) with entries`;
+            }
+        } catch {}
+        return String(content).slice(0, 120);
+    }
+
+    function renderSectionsAsHTML(sections) {
+        let html = '';
+        sections.forEach(sec => {
+            const title = sec.title || 'Untitled Section';
+            html += `<div class="mb-6"><h3 class="font-headline font-bold text-primary mb-2">${escapeHTML(title)}</h3>`;
+            if (sec.nil) {
+                html += `<p class="text-sm italic text-secondary">Nil</p>`;
+            } else if (!sec.rows || !sec.rows.length) {
+                html += `<p class="text-sm italic text-secondary">No entries</p>`;
+            } else {
+                const headers = Object.keys(sec.rows[0]);
+                html += `<table class="w-full text-sm border-collapse"><thead><tr>`;
+                headers.forEach(h => { html += `<th class="text-left p-2 border-b">${escapeHTML(h)}</th>`; });
+                html += `</tr></thead><tbody>`;
+                sec.rows.forEach(row => {
+                    html += `<tr>`;
+                    headers.forEach(h => { html += `<td class="p-2 border-b">${escapeHTML(row[h] || '—')}</td>`; });
+                    html += `</tr>`;
+                });
+                html += `</tbody></table>`;
+            }
+            html += `</div>`;
+        });
+        return html;
+    }
+
+    function escapeHTML(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
 });

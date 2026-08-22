@@ -27,7 +27,7 @@
     <script>
         // Role check - Head Office and Principal can access archive
         const role = localStorage.getItem('user_role');
-        if (role !== 'head office' && role !== 'principal' && role !== 'pa') {
+        if (role !== 'head_office' && role !== 'principal' && role !== 'pa') {
             window.location.href = 'index.html';
         }
     </script>
@@ -52,7 +52,7 @@
                     Head Office
                 </span>
             </div>
-            <button onclick="localStorage.clear(); window.location.href='index.html'" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-container-high hover:bg-[#e5e9eb] transition-colors text-secondary font-bold text-sm">
+            <button onclick="fetch('/api/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.clear();window.location.href='index.html'})" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-container-high hover:bg-[#e5e9eb] transition-colors text-secondary font-bold text-sm">
                 <span class="material-symbols-outlined text-xl">logout</span>
                 Logout
             </button>

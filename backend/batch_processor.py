@@ -34,7 +34,8 @@ DEPT_MAPPING = {
     "me":        "Mechanical Engineering",
     "mech":      "Mechanical Engineering",
     "civil":     "Civil Engineering",
-    "chem":      "Chemical Engineering",
+    "chem":      "Chemistry Department",
+    "chemistry": "Chemistry Department",
     "ae":        "Automobile Engineering",
     "mtp":       "Mentorship, Training & Placements",
     "english":   "English Department",
@@ -49,7 +50,7 @@ DEPT_MAPPING = {
 LIBRARY_DEPT_CODES = {"library", "lib", "lirc"}
 
 def _dept_name_from_code(code: str) -> str:
-    return DEPT_MAPPING.get(code, code.upper())
+    return DEPT_MAPPING.get((code or "").lower(), (code or "").upper())
 
 def parse_date(date_str):
     """Parse dates like '24th March 2026' into 'YYYY-MM-DD'."""

@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Fetch Summary
             let summaryData = {};
             try {
-                const summaryRes = await fetch(`/api/principal/summary/${date}`);
+                const summaryRes = await fetch(`/api/principal/summary/${date}`, { credentials: 'include' });
                 if (summaryRes.ok) {
                     const data = await summaryRes.json();
                     summaryData = data.record ? { summary: data.record.content } : {};
@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${approved.map(r => `
                                 <div>
                                     <h4 class="font-headline font-bold text-primary/80 mb-2">${r.department}</h4>
-                                    <div class="text-sm border-l-2 border-surface-container-high pl-4">${r.content.replace(/\\n/g, '<br/>')}</div>
+                                    <div class="text-sm border-l-2 border-surface-container-high pl-4">${formatRecordContent(r.content)}</div>
                                 </div>
                             `).join('')}
                         </div>
@@ -141,4 +141,24 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error(e);
         }
     };
+
+    function formatRecordContent(content) {
+        if (!content) return '<span class="italic text-secondary">Empty</span>';
+        try {
+            const parsed = JSON.parse(content);
+            if (parsed && parsed.sections) {
+                return parsed.sections.map(sec => {
+                    const title = escapeHTML(sec.title || '');
+                    if (sec.nil) return `<p><strong>${title}</strong> — Nil</p>`;
+                    const n = (sec.rows || []).length;
+                    return `<p><strong>${title}</strong> — ${n} row(s)</p>`;
+                }).join('');
+            }
+        } catch {}
+        return `<pre class="whitespace-pre-wrap text-xs">${escapeHTML(String(content).slice(0, 2000))}</pre>`;
+    }
+
+    function escapeHTML(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
 });

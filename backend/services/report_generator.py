@@ -268,8 +268,9 @@ def _build_overall_attendance(doc, report, section_num: int) -> int:
     """
     depts = report.get("attendance", {}).get("departments", [])
     has_overall = bool(report.get("overall_staff_attendance_table"))
+    has_students = bool(report.get("student_attendance") or report.get("overall_student_attendance_table"))
 
-    if not depts and not has_overall:
+    if not depts and not has_overall and not has_students and not report.get("attendance", {}).get("library"):
         return section_num
 
     _add_section_heading(doc, section_num, "Staff & Student Attendance Report")
@@ -333,23 +334,49 @@ def _build_overall_attendance(doc, report, section_num: int) -> int:
             _val(lib.get("absent_without_leave")), _val(lib.get("present")),
         ], 1)
 
+    _build_student_attendance(doc, report)
+
     return section_num + 1
 
 
 def _build_student_attendance(doc, report):
-    """Build the student attendance table from raw data."""
+    """Build the student attendance table from structured rows or raw table."""
+    structured = report.get("student_attendance") or []
+    if structured and isinstance(structured[0], dict):
+        _add_sub_heading(doc, "Student Attendance Report")
+        headers = ["S.No", "Department", "Programme", "Year", "On Rolls", "Present", "Absent", "%"]
+        table = doc.add_table(rows=1 + len(structured), cols=len(headers))
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.style = 'Table Grid'
+        _add_header_row(table, headers)
+        for i, row in enumerate(structured):
+            rolls = row.get("on_rolls")
+            present = row.get("present")
+            pct = row.get("percentage")
+            if pct is None and rolls and present is not None:
+                pct = round(present / rolls * 100, 1)
+            _add_data_row(table, [
+                str(i + 1),
+                row.get("dept", ""),
+                row.get("programme", ""),
+                row.get("year", ""),
+                _val(rolls),
+                _val(present),
+                _val(row.get("absent")),
+                _pct(pct) if isinstance(pct, (int, float)) else _val(pct),
+            ], i + 1)
+        return
+
     student_table = report.get("overall_student_attendance_table", [])
     if not student_table:
         return
 
     _add_sub_heading(doc, "Student Attendance Report")
-    
-    # We render the table exactly as it is, since it has variable lengths
-    # Find max columns
+
     max_cols = max((len(r) for r in student_table), default=0)
     if max_cols == 0:
         return
-        
+
     table = doc.add_table(rows=len(student_table), cols=max_cols)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.style = 'Table Grid'
@@ -360,12 +387,11 @@ def _build_student_attendance(doc, report):
             if c < max_cols:
                 cell = row_obj.cells[c]
                 is_header = (r == 0)
-                # Shading: dark blue for header, alternate for body
                 if is_header:
                     _set_cell_shading(cell, DARK_BLUE_HEX)
                 else:
                     _set_cell_shading(cell, LIGHT_GRAY_HEX if r % 2 == 0 else "FFFFFF")
-                
+
                 color = WHITE if is_header else BODY_GRAY
                 _set_cell_text(cell, str(val), bold=is_header, font_size=8, color=color, alignment=WD_ALIGN_PARAGRAPH.CENTER)
 
@@ -529,8 +555,10 @@ def _build_mtp_sections(doc, report, section_num: int) -> int:
 
 def _build_infrastructure(doc, report, section_num: int) -> int:
     """Build infrastructure issues section (table, pending only)."""
-    issues = [i for i in report.get("infrastructure_issues", [])
-              if i.get("status", "").lower() == "pending"]
+    issues = [
+        i for i in report.get("infrastructure_issues", [])
+        if str(i.get("status") or "pending").lower() == "pending"
+    ]
     if not issues:
         return section_num
 
@@ -798,7 +826,7 @@ def _build_staff_changes(doc, report, section_num: int) -> int:
     for i, c in enumerate(changes):
         _add_data_row(table, [
             str(i + 1), c.get("name", "—"), c.get("dept", "—").upper(),
-            c.get("designation", "—"), c.get("type", "—").upper(), c.get("date", "—"),
+            c.get("designation", "—"), (c.get("type") or "joined").upper(), c.get("date", "—"),
         ], i + 1)
 
     return section_num + 1
@@ -842,7 +870,7 @@ def _build_incidents(doc, report, section_num: int) -> int:
         row = table.rows[i + 1]
         values = [
             str(i + 1), inc.get("dept", "").upper(), inc.get("type", "—"),
-            inc.get("name", "—"), inc.get("brief", "—"), _val(inc.get("remarks")),
+            inc.get("name", "—"), inc.get("brief") or inc.get("description") or "—", _val(inc.get("remarks")),
         ]
         bg = LIGHT_GRAY_HEX if i % 2 == 0 else "FFFFFF"
         for j, val in enumerate(values):
@@ -976,10 +1004,21 @@ def generate_docx(report: dict, output_path: str = None,
     )
     pPr.append(pBdr)
 
-    # ── Build sections ────────────────────────────────────────────────────────
-    # Order: Attendance → Infrastructure → Dept Highlights → Participation →
-    #        Staff Changes → Classwork → Incidents → Library (ALWAYS LAST)
+    exec_summary = (report.get("executive_summary") or "").strip()
     num = 1
+    if exec_summary:
+        _add_section_heading(doc, num, "Executive Summary")
+        import re as _re
+        text = _re.sub(r"<br\s*/?>", "\n", exec_summary, flags=_re.I)
+        text = _re.sub(r"</p>", "\n", text, flags=_re.I)
+        text = _re.sub(r"<[^>]+>", "", text)
+        for line in text.split("\n"):
+            line = line.strip()
+            if line:
+                _add_body_text(doc, line)
+        num += 1
+
+    # ── Build sections ────────────────────────────────────────────────────────
     num = _build_overall_attendance(doc, report, num)
     num = _build_mtp_sections(doc, report, num)
     num = _build_department_highlights(doc, report, num, all_images)

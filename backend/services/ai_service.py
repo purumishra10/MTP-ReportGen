@@ -37,7 +37,11 @@ def _get_openrouter_client():
     """Lazy-init OpenRouter client via openai-compatible SDK."""
     global _openrouter_client
     if _openrouter_client is None:
-        from openai import OpenAI
+        try:
+            from openai import OpenAI
+        except ImportError:
+            print("[LLM] openai package not installed; skipping OpenRouter")
+            return None
         key = os.getenv("OPENROUTER_API_KEY", "").strip()
         if not key:
             return None
@@ -223,6 +227,7 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
     }
 
     narrative_blocks = []  # Collect narrative text for LLM
+    student_attendance_rows = []
 
     for dept in dept_data:
         dept_code = dept["dept_code"]
@@ -233,8 +238,24 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
             final_report["attendance_charts"].extend(dept["attendance_charts"])
 
         # Attendance — deterministic, never goes to LLM
-        if dept.get("attendance"):
-            final_report["attendance"]["departments"].append(dept["attendance"])
+        raw_att = dept.get("attendance")
+        if raw_att:
+            students = (
+                raw_att.get("_students")
+                or raw_att.get("students")
+                or dept.get("student_attendance")
+                or {}
+            )
+            flat_att = _normalize_staff_attendance(raw_att, dept_name)
+            if flat_att:
+                final_report["attendance"]["departments"].append(flat_att)
+            student_attendance_rows.extend(
+                _student_rows_from_nested(students, dept_name)
+            )
+        elif dept.get("student_attendance"):
+            student_attendance_rows.extend(
+                _student_rows_from_nested(dept["student_attendance"], dept_name)
+            )
 
         # Library attendance — deterministic
         if dept.get("library_attendance"):
@@ -281,6 +302,10 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
             final_report["mtp_narrative"] = dept["mtp_narrative"]
         if dept.get("mtp_batch_pills"):
             final_report["mtp_batch_pills"] = dept["mtp_batch_pills"]
+        if dept.get("mtp_summary"):
+            for item in dept["mtp_summary"]:
+                if isinstance(item, dict) and item not in final_report["mtp_summary"]:
+                    final_report["mtp_summary"].append(item)
 
         # ── Collect narrative text for LLM ────────────────────────────────
         # IMPORTANT: We collect ALL narrative text including loose_paragraphs.
@@ -315,6 +340,16 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
                 "text": "\n\n".join(narrative_parts),
             })
 
+    if student_attendance_rows:
+        final_report["student_attendance"] = student_attendance_rows
+
+    det_highlights, det_staff, det_students = _deterministic_narratives(dept_data)
+    final_report["department_highlights"] = det_highlights
+    if det_staff:
+        final_report["staff_participation"] = det_staff
+    if det_students:
+        final_report["student_participation"] = det_students
+
     # ── Phase 2: LLM summarization of narrative content ───────────────────
     # Only if there is actual narrative content to process
     if narrative_blocks:
@@ -338,16 +373,22 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
             if isinstance(llm_result, dict):
                 if "department_highlights" in llm_result:
                     raw_highlights = llm_result["department_highlights"]
-                    # MTP has its own dedicated section — strip it from dept highlights
-                    final_report["department_highlights"] = [
+                    llm_highlights = [
                         b for b in raw_highlights
-                        if b.get("dept_code", "").lower() != "mtp"
+                        if isinstance(b, dict) and b.get("dept_code", "").lower() != "mtp"
                     ]
-                if "staff_participation" in llm_result:
+                    final_report["department_highlights"] = _merge_highlights(
+                        det_highlights, llm_highlights
+                    )
+                if llm_result.get("staff_participation"):
                     final_report["staff_participation"] = llm_result["staff_participation"]
-                if "student_participation" in llm_result:
+                elif det_staff:
+                    final_report["staff_participation"] = det_staff
+                if llm_result.get("student_participation"):
                     final_report["student_participation"] = llm_result["student_participation"]
-                if "mtp_summary" in llm_result and isinstance(llm_result["mtp_summary"], list):
+                elif det_students:
+                    final_report["student_participation"] = det_students
+                if llm_result.get("mtp_summary"):
                     final_report["mtp_summary"] = llm_result["mtp_summary"]
             else:
                 print(f"[WARNING] LLM returned unexpected type: {type(llm_result)}")
@@ -356,6 +397,8 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
             print(f"[ERROR] LLM summarization failed: {e}")
             traceback.print_exc()
             print("[INFO] Continuing with deterministic data only.")
+            if det_highlights:
+                final_report["department_highlights"] = det_highlights
 
     # ── Phase 3: Dedicated MTP summary extraction ─────────────────────────
     # This is a separate small LLM call on just the MTP narrative text,
@@ -496,6 +539,130 @@ def _chunked_summarize(report_date: str, narrative_blocks: list[dict]) -> dict:
     return merged
 
 
+def _normalize_staff_attendance(raw_att: dict, dept_name: str) -> dict | None:
+    """Accept both extractor (flat) and portal (nested staff) attendance shapes."""
+    if not isinstance(raw_att, dict):
+        return None
+    if raw_att.get("staff"):
+        teaching = raw_att.get("staff", {}).get("teaching") or {}
+        non_teaching = raw_att.get("staff", {}).get("non_teaching") or {}
+        t_rolls = teaching.get("on_rolls") or 0
+        nt_rolls = non_teaching.get("on_rolls") or 0
+        t_abs = teaching.get("absent") or 0
+        nt_abs = non_teaching.get("absent") or 0
+        total_rolls = t_rolls + nt_rolls
+        total_absent = t_abs + nt_abs
+        if total_rolls == 0 and total_absent == 0:
+            return None
+        present = total_rolls - total_absent
+        return {
+            "dept": dept_name or raw_att.get("dept") or "",
+            "teaching_count": t_rolls or None,
+            "non_teaching_count": nt_rolls or None,
+            "on_rolls": total_rolls,
+            "absent": total_absent,
+            "present": present,
+            "percentage": round(present / total_rolls * 100, 1) if total_rolls else None,
+        }
+    if any(k in raw_att for k in ("teaching_count", "on_rolls", "absent", "present")):
+        att = dict(raw_att)
+        att.pop("_students", None)
+        att.pop("students", None)
+        att.pop("staff", None)
+        if not att.get("dept"):
+            att["dept"] = dept_name
+        on_rolls = att.get("on_rolls") or 0
+        absent = att.get("absent") or 0
+        if att.get("present") is None and on_rolls:
+            att["present"] = on_rolls - absent
+        if att.get("percentage") is None and on_rolls and att.get("present") is not None:
+            att["percentage"] = round(att["present"] / on_rolls * 100, 1)
+        if not on_rolls and not absent and not att.get("teaching_count"):
+            return None
+        return att
+    return None
+
+
+def _student_rows_from_nested(students: dict, dept_name: str) -> list[dict]:
+    rows = []
+    if not isinstance(students, dict):
+        return rows
+    mapping = [
+        ("B.Tech", students.get("btech") or []),
+        ("M.Tech", students.get("mtech") or []),
+        ("Minor", students.get("minor") or []),
+    ]
+    for programme, years in mapping:
+        for y in years:
+            if not isinstance(y, dict):
+                continue
+            rolls = y.get("on_rolls")
+            present = y.get("present")
+            absent = y.get("absent")
+            if rolls is None and present is None and absent is None:
+                continue
+            if present is None and rolls is not None and absent is not None:
+                present = rolls - absent
+            if absent is None and rolls is not None and present is not None:
+                absent = rolls - present
+            pct = round(present / rolls * 100, 1) if rolls and present is not None else None
+            rows.append({
+                "dept": dept_name,
+                "programme": programme,
+                "year": y.get("year") or "",
+                "on_rolls": rolls,
+                "present": present,
+                "absent": absent,
+                "percentage": pct,
+            })
+    return rows
+
+
+def _deterministic_narratives(dept_data: list[dict]) -> tuple[list, list, list]:
+    """Build highlights and participation lists from structured portal/extractor fields."""
+    highlights = []
+    staff_p = []
+    student_p = []
+    for dept in dept_data:
+        dept_code = (dept.get("dept_code") or "").lower()
+        if dept_code == "mtp":
+            continue
+        events = [e for e in (dept.get("events") or []) if isinstance(e, dict) and (e.get("name") or e.get("summary"))]
+        other = []
+        if dept.get("other_matters_text") and _has_real_narrative_content(dept["other_matters_text"]):
+            other.append(dept["other_matters_text"].strip())
+        if events or other:
+            highlights.append({
+                "dept": dept.get("dept_name") or dept_code,
+                "dept_code": dept_code,
+                "events": events,
+                "other_matters": other,
+            })
+        for row in dept.get("staff_participation_rows") or []:
+            if isinstance(row, dict):
+                staff_p.append(row)
+        for row in dept.get("student_participation_rows") or []:
+            if isinstance(row, dict):
+                student_p.append(row)
+    return highlights, staff_p, student_p
+
+
+def _merge_highlights(deterministic: list, llm_blocks: list) -> list:
+    """Prefer LLM wording when a department is covered; keep deterministic otherwise."""
+    by_code = {}
+    for block in deterministic:
+        key = (block.get("dept_code") or block.get("dept") or "").lower()
+        by_code[key] = block
+    for block in llm_blocks:
+        events = block.get("events") or []
+        other = block.get("other_matters") or []
+        if not events and not other:
+            continue
+        key = (block.get("dept_code") or block.get("dept") or "").lower()
+        by_code[key] = block
+    return list(by_code.values())
+
+
 def _has_real_narrative_content(text: str) -> bool:
     """Check if narrative text has actual content worth sending to LLM."""
     lines = text.strip().split("\n")
@@ -528,7 +695,7 @@ def _remove_empty_sections(report: dict) -> dict:
         "infrastructure_issues", "department_highlights",
         "staff_participation", "student_participation",
         "staff_changes", "classwork_adjustments", "incidents",
-        "attendance_charts",
+        "attendance_charts", "student_attendance",
     ]
     for key in keys_to_check:
         if key in report and isinstance(report[key], list) and not report[key]:
