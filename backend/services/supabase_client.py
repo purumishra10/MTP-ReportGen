@@ -1,36 +1,71 @@
 """
-Supabase integration for storing and retrieving generated reports.
+Supabase client for generated reports (storage) and a shared Postgres API client.
+
+Live portal tables (users, sessions, submissions) use get_admin_client() so the
+server can write under the service role key. The publishable/anon key is not
+enough once RLS is enabled.
 """
 
 import os
-import io
-from datetime import date
 from typing import Optional
 
-try:
-    from supabase import create_client, Client
+from dotenv import load_dotenv
+load_dotenv()
 
-    SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-    SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
-    if SUPABASE_URL and SUPABASE_KEY:
-        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        SUPABASE_ENABLED = True
-    else:
-        supabase = None
-        SUPABASE_ENABLED = False
-except Exception:
-    supabase = None
-    SUPABASE_ENABLED = False
+def _normalize_supabase_url(url: str) -> str:
+    url = (url or "").strip().rstrip("/")
+    if url.endswith("/rest/v1"):
+        url = url[: -len("/rest/v1")]
+    return url.rstrip("/")
 
+
+def _create_client():
+    try:
+        from supabase import create_client
+    except Exception:
+        return None, False
+
+    url = _normalize_supabase_url(os.environ.get("SUPABASE_URL", ""))
+    service_key = (
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        or os.environ.get("SUPABASE_SECRET_KEY", "").strip()
+    )
+    fallback_key = os.environ.get("SUPABASE_KEY", "").strip()
+    key = service_key or fallback_key
+
+    if not url or not key:
+        return None, False
+
+    try:
+        client = create_client(url, key)
+        return client, bool(service_key)
+    except Exception as e:
+        print(f"[WARNING] Could not create Supabase client: {e}")
+        return None, False
+
+
+supabase, _using_service_role = _create_client()
+SUPABASE_ENABLED = supabase is not None
+
+if SUPABASE_ENABLED and not _using_service_role:
+    print(
+        "[WARNING] SUPABASE_SERVICE_ROLE_KEY is not set. "
+        "Using SUPABASE_KEY. Portal writes may fail after RLS is enabled. "
+        "Add the secret/service_role key from Supabase > Settings > API Keys."
+    )
 
 BUCKET_NAME = "reports"
 TABLE_NAME = "reports"
 
 
 def is_enabled() -> bool:
-    """Check if Supabase is configured and available."""
     return SUPABASE_ENABLED
+
+
+def get_admin_client():
+    """Shared Supabase client (service role when configured)."""
+    return supabase
 
 
 def save_report(
@@ -40,23 +75,9 @@ def save_report(
     filename: str,
     metadata: Optional[dict] = None,
 ) -> Optional[dict]:
-    """
-    Save a generated report to Supabase.
-
-    Args:
-        report_date: Date in YYYY-MM-DD format
-        departments: List of department codes that were included
-        docx_bytes: The generated DOCX file as bytes
-        filename: Filename for storage (e.g. "daily_report_2026-03-16.docx")
-        metadata: Optional additional metadata
-
-    Returns:
-        The inserted record dict, or None if Supabase is not enabled
-    """
     if not SUPABASE_ENABLED:
         return None
 
-    # Upload file to storage
     file_path = f"{report_date}/{filename}"
     try:
         supabase.storage.from_(BUCKET_NAME).upload(
@@ -65,7 +86,6 @@ def save_report(
             file_options={"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
         )
     except Exception as e:
-        # If file already exists, update it
         if "Duplicate" in str(e) or "already exists" in str(e):
             supabase.storage.from_(BUCKET_NAME).update(
                 file_path,
@@ -76,7 +96,6 @@ def save_report(
             print(f"[WARNING] Storage upload failed: {e}")
             file_path = None
 
-    # Insert record into database
     record = {
         "report_date": report_date,
         "departments": departments,
@@ -93,7 +112,6 @@ def save_report(
 
 
 def list_reports(limit: int = 50) -> list[dict]:
-    """List all reports, most recent first."""
     if not SUPABASE_ENABLED:
         return []
 
@@ -105,14 +123,13 @@ def list_reports(limit: int = 50) -> list[dict]:
             .limit(limit)
             .execute()
         )
-        return result.data
+        return result.data or []
     except Exception as e:
         print(f"[WARNING] Failed to list reports: {e}")
         return []
 
 
 def get_report(report_id: str) -> Optional[dict]:
-    """Get a specific report by ID."""
     if not SUPABASE_ENABLED:
         return None
 
@@ -131,13 +148,11 @@ def get_report(report_id: str) -> Optional[dict]:
 
 
 def get_report_file(file_path: str) -> Optional[bytes]:
-    """Download a report file from Supabase storage."""
     if not SUPABASE_ENABLED:
         return None
 
     try:
-        data = supabase.storage.from_(BUCKET_NAME).download(file_path)
-        return data
+        return supabase.storage.from_(BUCKET_NAME).download(file_path)
     except Exception as e:
         print(f"[WARNING] Failed to download report: {e}")
         return None

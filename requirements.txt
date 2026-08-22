@@ -16,7 +16,7 @@ google-genai==1.14.0
 openai>=1.40.0
 
 # Database - Supabase
-supabase==2.11.0
+supabase>=2.16.0
 
 # Data validation
 pydantic==2.9.0

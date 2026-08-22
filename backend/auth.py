@@ -1,43 +1,59 @@
 import bcrypt
 import uuid
-import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict
 
-from backend.database import get_connection
+from backend.database import (
+    get_user as db_get_user,
+    count_users,
+    insert_user,
+    create_session_row,
+    get_session_with_user,
+    delete_session_row,
+    delete_expired_sessions,
+)
+
+
+def _parse_expiry(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    text = str(value).strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except ValueError:
+        try:
+            return datetime.strptime(text[:19], "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return None
+
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
 
 def verify_password(password: str, hashed: str) -> bool:
     try:
-        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+        return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
     except Exception:
         return False
 
+
 def get_user(username: str) -> Optional[Dict]:
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE username = ?", (username,))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return dict(row)
-    return None
+    return db_get_user(username)
+
 
 def seed_default_users():
-    conn = get_connection()
-    c = conn.cursor()
-    
-    # Check if users exist to avoid re-hashing
-    c.execute("SELECT COUNT(*) as count FROM users")
-    row = c.fetchone()
-    if row and row['count'] > 0:
-        conn.close()
+    if count_users() > 0:
         return
 
     users_to_seed = [
-        # Departments
         ("cse", "cse@vnr2026", "department", "cse"),
         ("ece", "ece@vnr2026", "department", "ece"),
         ("eee", "eee@vnr2026", "department", "eee"),
@@ -55,82 +71,49 @@ def seed_default_users():
         ("library", "library@vnr2026", "department", "library"),
         ("aiml", "aiml@vnr2026", "department", "aiml"),
         ("cys", "cys@vnr2026", "department", "cys"),
-        
-        # Staff Roles
         ("pa", "pa@vnr2026", "pa", None),
         ("principal", "principal@vnr2026", "principal", None),
-        ("headoffice", "head@vnr2026", "head_office", None)
+        ("headoffice", "head@vnr2026", "head_office", None),
     ]
-    
-    print("[INFO] Seeding default users...")
-    
-    for username, password, role, dept in users_to_seed:
-        hashed = hash_password(password)
-        try:
-            c.execute('''
-                INSERT INTO users (username, password_hash, role, department)
-                VALUES (?, ?, ?, ?)
-            ''', (username, hashed, role, dept))
-        except sqlite3.IntegrityError:
-            pass # Ignore if already exists
 
-    conn.commit()
-    conn.close()
+    print("[INFO] Seeding default users...")
+    for username, password, role, dept in users_to_seed:
+        insert_user(username, hash_password(password), role, dept)
     print("[INFO] Done seeding default users.")
 
+
 def create_session(username: str) -> str:
-    """Create a new session token and store it."""
     token = str(uuid.uuid4())
-    expires_at = datetime.now() + timedelta(days=7) # 7 days valid
-    
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO sessions (token, username, expires_at)
-        VALUES (?, ?, ?)
-    ''', (token, username, expires_at.strftime('%Y-%m-%d %H:%M:%S')))
-    conn.commit()
-    conn.close()
-    
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    create_session_row(token, username, expires_at)
     return token
 
+
 def get_session_user(token: str) -> Optional[Dict]:
-    """Retrieve user dictionary given a session token."""
     if not token:
         return None
-        
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute('''
-        SELECT u.username, u.role, u.department, s.expires_at 
-        FROM sessions s
-        JOIN users u ON s.username = u.username
-        WHERE s.token = ?
-    ''', (token,))
-    row = c.fetchone()
-    conn.close()
-    
+
+    row = get_session_with_user(token)
     if not row:
         return None
-        
-    # Check expiration
-    expires_at = datetime.strptime(row['expires_at'], '%Y-%m-%d %H:%M:%S')
+
+    expires_at = _parse_expiry(row.get("expires_at"))
+    if expires_at is None:
+        return None
     if datetime.now() > expires_at:
         delete_session(token)
         return None
-        
-    return dict(row)
+
+    return {
+        "username": row["username"],
+        "role": row["role"],
+        "department": row.get("department"),
+    }
+
 
 def delete_session(token: str):
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("DELETE FROM sessions WHERE token = ?", (token,))
-    conn.commit()
-    conn.close()
-    
+    delete_session_row(token)
+
+
 def clean_expired_sessions():
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("DELETE FROM sessions WHERE expires_at < CURRENT_TIMESTAMP")
-    conn.commit()
-    conn.close()
+    delete_expired_sessions()

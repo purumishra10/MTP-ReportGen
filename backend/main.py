@@ -43,7 +43,7 @@ app.add_middleware(
 # --- Startup ---
 @app.on_event("startup")
 def startup_event():
-    print("[INFO] Initializing SQLite database...")
+    print("[INFO] Initializing database...")
     init_db()
     seed_default_users()
     os.makedirs("generated_reports", exist_ok=True)
