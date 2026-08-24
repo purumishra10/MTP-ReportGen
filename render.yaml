@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: mtp-reportgen
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    region: singapore   # closest free region to India
+
+    envVars:
+      # ── Required ──────────────────────────────────────────────────────────
+      - key: GEMINI_API_KEY
+        sync: false          # set manually in Render dashboard
+
+      - key: SUPABASE_URL
+        sync: false
+
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+      # ── Optional ──────────────────────────────────────────────────────────
+      # - key: SUPABASE_KEY
+      #   sync: false
+      # - key: OPENROUTER_API_KEY
+      #   sync: false

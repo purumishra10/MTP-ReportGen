@@ -1,27 +1,27 @@
 # Core web framework
-fastapi==0.115.0
-uvicorn[standard]==0.30.0
-python-multipart==0.0.9
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
 bcrypt
 
 # Environment config
-python-dotenv==1.0.1
+python-dotenv>=1.0.1
 
 # Document processing
 python-docx==1.1.2
-pypdf==5.0.0
+pypdf>=5.0.0
 
 # AI - Google Gemini
 google-genai==1.14.0
 openai>=1.40.0
 
 # Database - Supabase
-supabase>=2.16.0
+supabase>=2.11.0
 
 # Data validation
-pydantic==2.9.0
+pydantic>=2.9.0
 
-# HTTP client (for tests)
-requests==2.32.0
-json-repair==0.35.0
+# HTTP client
+requests>=2.32.0
+json-repair>=0.35.0
 groq>=0.15.0

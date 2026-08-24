@@ -31,10 +31,13 @@ from backend.services.portal_report_service import generate_from_portal
 # Setup application
 app = FastAPI(title="MTP Daily Report API & Portal")
 
-# CORS setup
+# CORS setup — restrict in production via ALLOWED_ORIGINS env var
+# e.g. ALLOWED_ORIGINS=https://mtp-reportgen.onrender.com,https://yourdomain.com
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
+_origins = [o.strip() for o in _raw_origins.split(",")] if _raw_origins != "*" else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -97,11 +100,12 @@ def login(req: LoginRequest, response: Response):
         
     token = create_session(req.username)
     
-    # Set cookie (HttpOnly for security)
+    # Set cookie — HttpOnly for security; role info returned in JSON body
     response.set_cookie(
         key="session_token", 
         value=token, 
-        httponly=False,  # Set to False so client JS can see if logged in easily, though HttpOnly is better for prod. We will use frontend JS to redirect based on 'role'.
+        httponly=True,
+        samesite="lax",
         max_age=7*24*3600
     )
     
