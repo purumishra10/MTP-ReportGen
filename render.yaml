@@ -8,6 +8,9 @@ services:
     region: singapore   # closest free region to India
 
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+
       # ── Required ──────────────────────────────────────────────────────────
       - key: GEMINI_API_KEY
         sync: false          # set manually in Render dashboard
