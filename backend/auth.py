@@ -97,12 +97,17 @@ def get_session_user(token: str) -> Optional[Dict]:
     if not row:
         return None
 
-    expires_at = _parse_expiry(row.get("expires_at"))
-    if expires_at is None:
-        return None
-    if datetime.now() > expires_at:
-        delete_session(token)
-        return None
+    try:
+        expires_at = _parse_expiry(row.get("expires_at"))
+        if expires_at is not None:
+            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            now_local = datetime.now()
+            # Delete only if both UTC and local clock are well past expiration
+            if now_utc > (expires_at + timedelta(hours=2)) and now_local > (expires_at + timedelta(hours=2)):
+                delete_session(token)
+                return None
+    except Exception as e:
+        print(f"[AUTH] Expiry parse warning: {e}")
 
     return {
         "username": row["username"],

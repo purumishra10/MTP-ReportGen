@@ -1,3 +1,20 @@
+// ── Auth Fetch Helper ────────────────────────────────────────────────────────
+async function authFetch(url, options = {}) {
+    const token = localStorage.getItem('session_token') || '';
+    const headers = new Headers(options.headers || {});
+    if (token && !headers.has('Authorization')) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
+    const opts = { ...options, headers, credentials: 'include' };
+    const res = await fetch(url, opts);
+    if (res.status === 401) {
+        localStorage.removeItem('session_token');
+        alert('Session expired. Redirecting to login...');
+        window.location.href = 'index.html';
+    }
+    return res;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const archiveList = document.getElementById('archive-list');
     const emptyState = document.getElementById('empty-state');
@@ -30,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchArchive() {
         try {
-            const res = await fetch('/api/history', { credentials: 'include' });
+            const res = await authFetch('/api/history');
             const data = await res.json();
             
             if (data.dates && data.dates.length > 0) {
@@ -61,7 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Fetch Summary
             let summaryData = {};
             try {
-                const summaryRes = await fetch(`/api/principal/summary/${date}`, { credentials: 'include' });
+                const summaryRes = await authFetch(`/api/principal/summary/${date}`);
                 if (summaryRes.ok) {
                     const data = await summaryRes.json();
                     summaryData = data.record ? { summary: data.record.content } : {};
@@ -69,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { console.error('No summary found'); }
 
             // Fetch Approved Records
-            const recordsRes = await fetch(`/api/tracker/${date}`, { credentials: 'include' });
+            const recordsRes = await authFetch(`/api/tracker/${date}`);
             const recordsData = await recordsRes.json();
 
             let contentHtml = '';
@@ -111,10 +128,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update Download Button — /api/generate now streams DOCX directly
             downloadBtn.onclick = async () => {
                 try {
-                    const res = await fetch('/api/generate', {
+                    const res = await authFetch('/api/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
                         body: JSON.stringify({ date })
                     });
                     if (!res.ok) {

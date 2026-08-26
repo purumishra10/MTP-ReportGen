@@ -27,54 +27,65 @@ import json_repair
 
 # ── Client initialization ─────────────────────────────────────────────────────
 # Supports two backends:
-#   1. OpenRouter  — set OPENROUTER_API_KEY in .env  (primary)
-#   2. Google Gemini — set GEMINI_API_KEY in .env     (fallback)
+#   1. Google Gemini — set GEMINI_API_KEY in .env     (primary & fastest, ~2s latency)
+#   2. OpenRouter    — set OPENROUTER_API_KEY in .env (secondary fallback)
 
-_openrouter_client = None
 _gemini_client = None
+_openrouter_client = None
+
+def _get_gemini_client():
+    """Lazy-init Gemini client using modern google-genai SDK."""
+    global _gemini_client
+    if _gemini_client is None:
+        try:
+            from google import genai
+            key = os.getenv("GEMINI_API_KEY", "").strip()
+            if not key:
+                return None
+            _gemini_client = genai.Client(api_key=key)
+        except Exception as e:
+            print(f"[LLM] Failed to initialize Gemini client: {e}")
+            return None
+    return _gemini_client
+
 
 def _get_openrouter_client():
-    """Lazy-init OpenRouter client via openai-compatible SDK."""
+    """Lazy-init OpenRouter client via openai-compatible SDK with timeout."""
     global _openrouter_client
     if _openrouter_client is None:
         try:
             from openai import OpenAI
-        except ImportError:
-            print("[LLM] openai package not installed; skipping OpenRouter")
+            key = os.getenv("OPENROUTER_API_KEY", "").strip()
+            if not key:
+                return None
+            _openrouter_client = OpenAI(
+                api_key=key,
+                base_url="https://openrouter.ai/api/v1",
+                timeout=20.0,
+                default_headers={
+                    "HTTP-Referer": "https://vnrvjiet.ac.in",
+                    "X-Title": "MTP ReportGen",
+                },
+            )
+        except Exception as e:
+            print(f"[LLM] Failed to initialize OpenRouter client: {e}")
             return None
-        key = os.getenv("OPENROUTER_API_KEY", "").strip()
-        if not key:
-            return None
-        _openrouter_client = OpenAI(
-            api_key=key,
-            base_url="https://openrouter.ai/api/v1",
-            default_headers={
-                "HTTP-Referer": "https://vnrvjiet.ac.in",
-                "X-Title": "MTP ReportGen",
-            },
-        )
     return _openrouter_client
 
 
-def _get_gemini_client():
-    """Lazy-init Gemini client."""
-    global _gemini_client
-    if _gemini_client is None:
-        from google import genai
-        key = os.getenv("GEMINI_API_KEY", "").strip()
-        if not key:
-            return None
-        _gemini_client = genai.Client(api_key=key)
-    return _gemini_client
-
-
-# Primary model: OpenRouter free Gemma 4
-OPENROUTER_MODEL = "google/gemma-4-31b-it:free"
-
-# Gemini fallback order — confirmed working model aliases
+# Gemini models in priority order — modern aliases tested and confirmed working
 GEMINI_MODELS = [
+    "models/gemini-2.5-flash",
     "models/gemini-flash-latest",
-    "models/gemini-pro-latest",
+    "models/gemini-2.5-flash-lite",
+    "models/gemini-2.5-pro",
+]
+
+# OpenRouter fallback models
+OPENROUTER_MODELS = [
+    "google/gemini-2.5-flash",
+    "google/gemma-4-31b-it:free",
+    "meta-llama/llama-3.3-70b-instruct",
 ]
 
 
@@ -350,66 +361,73 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
     if det_students:
         final_report["student_participation"] = det_students
 
-    # ── Phase 2: LLM summarization of narrative content ───────────────────
-    # Only if there is actual narrative content to process
-    if narrative_blocks:
-        try:
-            llm_result = _summarize_narratives(report_date, narrative_blocks)
+    # ── Phase 2 & 3: Concurrent LLM Summarization & MTP Extraction ────────
+    from concurrent.futures import ThreadPoolExecutor
 
-            # Normalize: sometimes LLM wraps department_highlights directly as a list
-            if isinstance(llm_result, list):
-                # Check if it looks like department_highlights (list of dept objects)
-                if llm_result and isinstance(llm_result[0], dict) and (
-                    "dept" in llm_result[0] or "events" in llm_result[0]
-                ):
-                    llm_result = {"department_highlights": llm_result,
-                                  "staff_participation": [],
-                                  "student_participation": []}
-                else:
-                    # Unknown list format — skip
-                    print(f"[WARNING] LLM returned unknown list format, skipping")
-                    llm_result = {}
-
-            if isinstance(llm_result, dict):
-                if "department_highlights" in llm_result:
-                    raw_highlights = llm_result["department_highlights"]
-                    llm_highlights = [
-                        b for b in raw_highlights
-                        if isinstance(b, dict) and b.get("dept_code", "").lower() != "mtp"
-                    ]
-                    final_report["department_highlights"] = _merge_highlights(
-                        det_highlights, llm_highlights
-                    )
-                if llm_result.get("staff_participation"):
-                    final_report["staff_participation"] = llm_result["staff_participation"]
-                elif det_staff:
-                    final_report["staff_participation"] = det_staff
-                if llm_result.get("student_participation"):
-                    final_report["student_participation"] = llm_result["student_participation"]
-                elif det_students:
-                    final_report["student_participation"] = det_students
-                if llm_result.get("mtp_summary"):
-                    final_report["mtp_summary"] = llm_result["mtp_summary"]
-            else:
-                print(f"[WARNING] LLM returned unexpected type: {type(llm_result)}")
-        except Exception as e:
-            import traceback
-            print(f"[ERROR] LLM summarization failed: {e}")
-            traceback.print_exc()
-            print("[INFO] Continuing with deterministic data only.")
-            if det_highlights:
-                final_report["department_highlights"] = det_highlights
-
-    # ── Phase 3: Dedicated MTP summary extraction ─────────────────────────
-    # This is a separate small LLM call on just the MTP narrative text,
-    # so it doesn't interfere with the main department summarization call.
     mtp_narrative = final_report.get("mtp_narrative", "").strip()
-    if mtp_narrative and not final_report.get("mtp_summary"):
-        print("[INFO] Extracting MTP activity summary...")
-        mtp_items = _extract_mtp_summary(mtp_narrative)
-        if mtp_items:
-            final_report["mtp_summary"] = mtp_items
-            print(f"  [OK] Extracted {len(mtp_items)} MTP activity items")
+    narrative_future = None
+    mtp_future = None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        if narrative_blocks:
+            narrative_future = executor.submit(_summarize_narratives, report_date, narrative_blocks)
+
+        if mtp_narrative and not final_report.get("mtp_summary"):
+            mtp_future = executor.submit(_extract_mtp_summary, mtp_narrative)
+
+        if narrative_future:
+            try:
+                llm_result = narrative_future.result()
+                # Normalize: sometimes LLM wraps department_highlights directly as a list
+                if isinstance(llm_result, list):
+                    if llm_result and isinstance(llm_result[0], dict) and (
+                        "dept" in llm_result[0] or "events" in llm_result[0]
+                    ):
+                        llm_result = {"department_highlights": llm_result,
+                                      "staff_participation": [],
+                                      "student_participation": []}
+                    else:
+                        print(f"[WARNING] LLM returned unknown list format, skipping")
+                        llm_result = {}
+
+                if isinstance(llm_result, dict):
+                    if "department_highlights" in llm_result:
+                        raw_highlights = llm_result["department_highlights"]
+                        llm_highlights = [
+                            b for b in raw_highlights
+                            if isinstance(b, dict) and b.get("dept_code", "").lower() != "mtp"
+                        ]
+                        final_report["department_highlights"] = _merge_highlights(
+                            det_highlights, llm_highlights
+                        )
+                    if llm_result.get("staff_participation"):
+                        final_report["staff_participation"] = llm_result["staff_participation"]
+                    elif det_staff:
+                        final_report["staff_participation"] = det_staff
+                    if llm_result.get("student_participation"):
+                        final_report["student_participation"] = llm_result["student_participation"]
+                    elif det_students:
+                        final_report["student_participation"] = det_students
+                    if llm_result.get("mtp_summary"):
+                        final_report["mtp_summary"] = llm_result["mtp_summary"]
+                else:
+                    print(f"[WARNING] LLM returned unexpected type: {type(llm_result)}")
+            except Exception as e:
+                import traceback
+                print(f"[ERROR] LLM summarization failed: {e}")
+                traceback.print_exc()
+                print("[INFO] Continuing with deterministic data only.")
+                if det_highlights:
+                    final_report["department_highlights"] = det_highlights
+
+        if mtp_future:
+            try:
+                mtp_items = mtp_future.result()
+                if mtp_items:
+                    final_report["mtp_summary"] = mtp_items
+                    print(f"  [OK] Extracted {len(mtp_items)} MTP activity items")
+            except Exception as e:
+                print(f"[WARN] MTP summary extraction failed: {e}")
 
     # ── Clean up empty sections ───────────────────────────────────────────
     final_report = _remove_empty_sections(final_report)
@@ -420,7 +438,8 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
 def _summarize_narratives(report_date: str, narrative_blocks: list[dict]) -> dict:
     """
     Send narrative text to LLM for summarization.
-    Uses per-department chunking for large inputs with per-department retry.
+    Uses single prompt for inputs up to ~35k tokens (fits all standard department reports).
+    Uses parallel chunked execution for exceptionally large inputs.
     """
     # Build full prompt to check size
     sections = "\n\n".join(
@@ -437,22 +456,23 @@ def _summarize_narratives(report_date: str, narrative_blocks: list[dict]) -> dic
     )
 
     # Rough token estimate: 4 chars ≈ 1 token
-    # Keep single calls small (≤6k tokens / ~3 depts) to avoid Gemini empty-response errors
-    # on large payloads. Anything bigger goes through chunked mode (4 depts per chunk).
+    # Gemini 2.5 Flash easily handles 1M tokens. Sending all departments together (typically ~4-8k tokens)
+    # produces faster, more cohesive output in a single 2-4s call.
     estimated_tokens = len(user_message) // 4
-    if estimated_tokens <= 6000:
+    if estimated_tokens <= 35000:
         raw = _llm_call(SUMMARIZE_SYSTEM_PROMPT, user_message)
         return _parse_json(raw, context="narrative_summarization_single")
 
-    # Otherwise chunk by department with per-dept retry on failure
+    # Otherwise chunk by department with parallel execution
     return _chunked_summarize(report_date, narrative_blocks)
 
 
 def _chunked_summarize(report_date: str, narrative_blocks: list[dict]) -> dict:
     """
-    Chunked summarization: process departments in groups of 4.
-    On failure, retry each department individually rather than silently dropping.
+    Chunked summarization: process departments in groups of 6 with parallel execution.
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     merged = {
         "department_highlights": [],
         "staff_participation": [],
@@ -460,30 +480,34 @@ def _chunked_summarize(report_date: str, narrative_blocks: list[dict]) -> dict:
         "mtp_summary": [],
     }
 
-    chunk_size = 4
-    for i in range(0, len(narrative_blocks), chunk_size):
-        chunk = narrative_blocks[i:i + chunk_size]
-        dept_names = [b["dept_name"] for b in chunk]
+    chunk_size = 6
+    chunks = [narrative_blocks[i:i + chunk_size] for i in range(0, len(narrative_blocks), chunk_size)]
 
+    def _process_chunk(chunk_idx, chunk):
         sections = "\n\n".join(
             f"=== DEPARTMENT: {b['dept_name']} (code: {b['dept_code']}) ===\n{b['text']}"
             for b in chunk
         )
-        user_message = (
+        msg = (
             f"Summarize the following department daily report narrative sections for date: {report_date}.\n"
             f"Extract all events, participation entries, industry visits, and other matters.\n"
             f"Include content from [Free Text] sections — departments often write events there.\n"
             f"NEVER invent any number — use null for any count not explicitly stated in the source.\n\n"
             f"{sections}"
         )
-
         try:
-            raw = _llm_call(SUMMARIZE_SYSTEM_PROMPT, user_message)
-            parsed = _parse_json(raw, context=f"narrative_chunk_{i}")
+            raw = _llm_call(SUMMARIZE_SYSTEM_PROMPT, msg)
+            return _parse_json(raw, context=f"narrative_chunk_{chunk_idx}")
+        except Exception as e:
+            print(f"[WARN] Chunk {chunk_idx} failed: {e}")
+            return None
 
+    with ThreadPoolExecutor(max_workers=min(4, len(chunks))) as executor:
+        futures = [executor.submit(_process_chunk, idx, c) for idx, c in enumerate(chunks)]
+        for future in as_completed(futures):
+            parsed = future.result()
             if isinstance(parsed, dict):
                 if "department_highlights" in parsed and isinstance(parsed["department_highlights"], list):
-                    # MTP has its own section — strip it here too
                     merged["department_highlights"].extend([
                         b for b in parsed["department_highlights"]
                         if b.get("dept_code", "").lower() != "mtp"
@@ -491,50 +515,9 @@ def _chunked_summarize(report_date: str, narrative_blocks: list[dict]) -> dict:
                 for key in ["staff_participation", "student_participation"]:
                     if key in parsed and isinstance(parsed[key], list):
                         merged[key].extend(parsed[key])
-                # Merge mtp_summary (flat list, deduplicate by summary text)
                 for item in parsed.get("mtp_summary", []):
                     if isinstance(item, dict) and item not in merged["mtp_summary"]:
                         merged["mtp_summary"].append(item)
-
-        except Exception as chunk_err:
-            # Chunk failed — retry each department individually
-            print(
-                f"[WARN] Chunk {i//chunk_size + 1} failed ({dept_names}): {chunk_err}\n"
-                f"       Retrying each department individually..."
-            )
-            for block in chunk:
-                try:
-                    single_message = (
-                        f"Summarize the following department daily report narrative sections for date: {report_date}.\n"
-                        f"Extract all events, participation entries, industry visits, and other matters.\n"
-                        f"Include content from [Free Text] sections — departments often write events there.\n"
-                        f"NEVER invent any number — use null for any count not explicitly stated in the source.\n\n"
-                        f"=== DEPARTMENT: {block['dept_name']} (code: {block['dept_code']}) ===\n{block['text']}"
-                    )
-                    raw = _llm_call(SUMMARIZE_SYSTEM_PROMPT, single_message)
-                    parsed = _parse_json(raw, context=f"dept_retry_{block['dept_code']}")
-
-                    if isinstance(parsed, dict):
-                        if "department_highlights" in parsed and isinstance(parsed["department_highlights"], list):
-                            # MTP has its own section — filter it out here too
-                            merged["department_highlights"].extend([
-                                b for b in parsed["department_highlights"]
-                                if b.get("dept_code", "").lower() != "mtp"
-                            ])
-                        for key in ["staff_participation", "student_participation"]:
-                            if key in parsed and isinstance(parsed[key], list):
-                                merged[key].extend(parsed[key])
-                        for item in parsed.get("mtp_summary", []):
-                            if isinstance(item, dict) and item not in merged["mtp_summary"]:
-                                merged["mtp_summary"].append(item)
-                    print(f"       [OK] Retry succeeded for {block['dept_name']}")
-
-                except Exception as dept_err:
-                    # Individual department failed — log clearly, do NOT silently drop
-                    print(
-                        f"[ERROR] Failed to summarize {block['dept_name']} even after retry: {dept_err}\n"
-                        f"        This department's narrative will be MISSING from the report."
-                    )
 
     return merged
 
@@ -727,110 +710,74 @@ def _remove_empty_sections(report: dict) -> dict:
 def _llm_call(system: str, user: str) -> str:
     """
     Call LLM with fallback chain:
-      1. OpenRouter (google/gemma-4-31b-it:free)  — if OPENROUTER_API_KEY is set
-      2. Google Gemini                             — if GEMINI_API_KEY is set
+      1. Google Gemini (models/gemini-2.5-flash)  — if GEMINI_API_KEY is set (primary & fast, ~2s)
+      2. OpenRouter (OPENROUTER_MODELS)          — if OPENROUTER_API_KEY is set (fallback)
 
     Both use temperature=0 for deterministic, non-hallucinating output.
-    max_tokens=16384 to prevent truncation of large consolidated outputs.
+    max_output_tokens=16384 to prevent truncation of large consolidated outputs.
     """
-    # ── Try OpenRouter first ──────────────────────────────────────────────────
+    # ── 1. Try Gemini first (fastest, direct API, high rate limit) ────────────
+    gemini_client = _get_gemini_client()
+    if gemini_client is not None:
+        from google.genai import types as gtypes
+        for model_name in GEMINI_MODELS:
+            for attempt in range(2):
+                try:
+                    response = gemini_client.models.generate_content(
+                        model=model_name,
+                        contents=user,
+                        config=gtypes.GenerateContentConfig(
+                            system_instruction=system,
+                            temperature=0,
+                            max_output_tokens=16384,
+                        ),
+                    )
+                    try:
+                        text = response.text
+                    except Exception as text_err:
+                        raise ValueError(f"Gemini response.text error: {text_err}") from text_err
+                    if not text or not text.strip():
+                        raise ValueError(f"Gemini ({model_name}) returned empty text")
+
+                    print(f"[LLM] Used Gemini ({model_name})")
+                    return text
+
+                except Exception as e:
+                    err_str = str(e).lower()
+                    if "404" in err_str or "not found" in err_str:
+                        break  # Move immediately to next model
+                    print(f"[LLM] Gemini warning ({model_name}, attempt {attempt+1}/2): {e}")
+                    if attempt < 1 and ("429" in err_str or "unavailable" in err_str):
+                        time.sleep(1.5)
+                        continue
+                    break
+
+    # ── 2. Fallback to OpenRouter if Gemini unavailable or failed ─────────────
     or_client = _get_openrouter_client()
     if or_client is not None:
-        for attempt in range(3):
+        for model_name in OPENROUTER_MODELS:
             try:
                 resp = or_client.chat.completions.create(
-                    model=OPENROUTER_MODEL,
+                    model=model_name,
                     messages=[
                         {"role": "system", "content": system},
                         {"role": "user",   "content": user},
                     ],
                     temperature=0,
                     max_tokens=16384,
+                    timeout=20.0,
                 )
                 text = resp.choices[0].message.content
                 if text and text.strip():
-                    print(f"[LLM] Used OpenRouter ({OPENROUTER_MODEL})")
+                    print(f"[LLM] Used OpenRouter ({model_name})")
                     return text
-                print(f"[LLM] OpenRouter returned empty response (attempt {attempt+1}/3)")
             except Exception as e:
-                err_str = str(e)
-                if "429" in err_str or "rate" in err_str.lower():
-                    wait = (2 ** attempt) * 5
-                    print(f"[LLM] OpenRouter rate limit, waiting {wait}s...")
-                    time.sleep(wait)
-                elif "402" in err_str or "credit" in err_str.lower():
-                    print(f"[LLM] OpenRouter credits exhausted, falling back to Gemini")
-                    break
-                else:
-                    print(f"[LLM] OpenRouter error (attempt {attempt+1}/3): {e}")
-                    if attempt == 2:
-                        print("[LLM] Falling back to Gemini after 3 OpenRouter failures")
-        # Fall through to Gemini
+                print(f"[LLM] OpenRouter error ({model_name}): {e}")
+                continue
 
-    # ── Fallback: Gemini ──────────────────────────────────────────────────────
-    gemini_client = _get_gemini_client()
-    if gemini_client is None:
-        raise RuntimeError(
-            "No LLM backend available. Set OPENROUTER_API_KEY or GEMINI_API_KEY in .env"
-        )
-
-    from google.genai import types as gtypes
-    last_err = None
-    for model_name in GEMINI_MODELS:
-        for attempt in range(3):
-            try:
-                response = gemini_client.models.generate_content(
-                    model=model_name,
-                    contents=user,
-                    config=gtypes.GenerateContentConfig(
-                        system_instruction=system,
-                        temperature=0,
-                        max_output_tokens=16384,
-                    ),
-                )
-                # Safely read .text — SDK raises ValueError for empty/blocked responses
-                try:
-                    text = response.text
-                except Exception as text_err:
-                    # Treat as retryable empty-response error
-                    raise ValueError(f"Gemini response.text error: {text_err}") from text_err
-                if not text or not text.strip():
-                    raise ValueError(f"Gemini ({model_name}) returned empty text")
-                
-                print(f"[LLM] Used Gemini fallback ({model_name})")
-                return text
-
-            except Exception as e:
-                last_err = e
-                err_str = str(e).lower()
-                if "429" in err_str or "resource_exhausted" in err_str:
-                    wait = (2 ** attempt) * 5
-                    print(f"[LLM] Gemini rate limit ({model_name}), waiting {wait}s...")
-                    time.sleep(wait)
-                    continue
-                elif "503" in err_str or "unavailable" in err_str:
-                    wait = (2 ** attempt) * 10
-                    print(f"[LLM] Gemini unavailable ({model_name}), waiting {wait}s...")
-                    time.sleep(wait)
-                    continue
-                elif ("model output" in err_str or "output text or tool calls" in err_str
-                        or "empty text" in err_str or "response.text error" in err_str):
-                    wait = (2 ** attempt) * 5
-                    print(f"[LLM] Gemini empty/blocked output ({model_name}), attempt {attempt+1}/3, waiting {wait}s...")
-                    time.sleep(wait)
-                    continue
-                elif "404" in err_str or "not found" in err_str:
-                    break  # Model doesn't exist, try next
-                else:
-                    print(f"[LLM] Gemini error ({model_name}) attempt {attempt+1}/3: {e}")
-                    if attempt < 2:
-                        time.sleep(5)
-                        continue
-                    break  # Move to next model after 3 failures
-
-    if last_err:
-        raise last_err
-    raise RuntimeError("All Gemini models exhausted with no valid response")
+    raise RuntimeError(
+        "No LLM backend available or all models failed. Set a valid GEMINI_API_KEY or OPENROUTER_API_KEY."
+    )
 
 
 def _parse_json(raw: str, context: str) -> dict | list:

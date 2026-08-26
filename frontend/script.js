@@ -51,7 +51,7 @@ function showLoading(submitBtn, loadingBtn, show) {
 // Download a blob from a fetch response
 async function downloadBlobResponse(response, filename) {
     if (!response.ok) {
-        let detail = 'Request failed';
+        let detail = `Request failed (${response.status})`;
         try { const j = await response.json(); detail = j.detail || j.error || detail; } catch {}
         throw new Error(detail);
     }
@@ -63,9 +63,11 @@ async function downloadBlobResponse(response, filename) {
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-    return url; // return so we can also set on download link
+    setTimeout(() => {
+        if (a.parentNode) document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 60000);
+    return url;
 }
 
 // ── Initialise date pickers ────────────────────────────────────────────────────
@@ -78,8 +80,29 @@ if (uploadDateEl)  uploadDateEl.value  = today;
 if (dbDateEl)      dbDateEl.value      = today;
 if (trackerDateEl) trackerDateEl.value = today;
 
-// Load username
-fetch('/api/me', { credentials: 'include' })
+// ── Auth Fetch Helper (Dual Token + Cookie Auth) ─────────────────────────────
+async function authFetch(url, options = {}) {
+    const token = localStorage.getItem('session_token') || '';
+    const headers = new Headers(options.headers || {});
+    if (token && !headers.has('Authorization')) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
+    const opts = {
+        ...options,
+        headers,
+        credentials: 'include'
+    };
+    const res = await fetch(url, opts);
+    if (res.status === 401) {
+        localStorage.removeItem('session_token');
+        showAlert('Session expired. Redirecting to login...', 'error');
+        setTimeout(() => { window.location.href = 'index.html'; }, 1500);
+    }
+    return res;
+}
+
+// Load username & verify session
+authFetch('/api/me')
     .then(r => r.ok ? r.json() : null)
     .then(data => {
         if (data && data.username) {
@@ -92,7 +115,7 @@ fetch('/api/me', { credentials: 'include' })
 const logoutBtn = document.getElementById('logout-btn');
 if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
-        await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+        await authFetch('/api/logout', { method: 'POST' });
         localStorage.clear();
         window.location.href = 'index.html';
     });
@@ -121,18 +144,17 @@ const uploadDownloadLink = document.getElementById('upload-download-link');
 // ── Consolidation timer helpers ────────────────────────────────────────────────
 const CONSOLIDATION_STAGES = [
     { at: 0,   msg: 'Uploading department files to server...' },
-    { at: 5,   msg: 'Reading and parsing DOCX files...' },
-    { at: 15,  msg: 'Extracting attendance & infrastructure data...' },
-    { at: 25,  msg: 'Running AI narrative summarisation...' },
-    { at: 45,  msg: 'Summarising department activities with Gemma-4...' },
-    { at: 65,  msg: 'Extracting MTP placement highlights...' },
-    { at: 85,  msg: 'Assembling final DOCX report...' },
-    { at: 100, msg: 'Almost done — finalising report...' },
-    { at: 120, msg: 'Large batch detected — still working, hang tight...' },
-    { at: 150, msg: 'Completing last AI calls — nearly there...' },
+    { at: 2,   msg: 'Reading and parsing DOCX structured tables...' },
+    { at: 5,   msg: 'Extracting attendance, infra & department metrics...' },
+    { at: 10,  msg: 'Running AI narrative summarisation with Gemini...' },
+    { at: 20,  msg: 'Extracting MTP placement & training activities...' },
+    { at: 35,  msg: 'Assembling formatted Master DOCX report...' },
+    { at: 45,  msg: 'Almost done — finalizing report...' },
+    { at: 60,  msg: 'Large batch processing — completing final checks...' },
 ];
 
 let _consolidationTimer = null;
+let _originalDocTitle = document.title;
 
 function startConsolidationTimer() {
     const timerEl   = document.getElementById('upload-timer-display');
@@ -140,23 +162,31 @@ function startConsolidationTimer() {
     const barEl     = document.getElementById('upload-progress-bar');
     if (!timerEl || !statusEl) return;
 
-    let elapsed = 0;
-    // Simulate progress: goes to ~85% over 150s, never reaches 100% until done
-    const getBarPct = (s) => Math.min(85, (s / 150) * 85);
+    const startTime = Date.now();
+    _originalDocTitle = document.title;
 
-    _consolidationTimer = setInterval(() => {
-        elapsed++;
+    // Simulate progress smoothly based on wall-clock time so tab switches don't stall it
+    const getBarPct = (s) => Math.min(92, (s / 45) * 92);
+
+    const tick = () => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
         timerEl.textContent = elapsed + 's';
         if (barEl) barEl.style.width = getBarPct(elapsed) + '%';
 
         // Find the most recent stage message
         const stage = [...CONSOLIDATION_STAGES].reverse().find(s => elapsed >= s.at);
         if (stage) statusEl.textContent = stage.msg;
-    }, 1000);
+    };
+
+    tick();
+    _consolidationTimer = setInterval(tick, 500);
 }
 
 function stopConsolidationTimer() {
-    if (_consolidationTimer) { clearInterval(_consolidationTimer); _consolidationTimer = null; }
+    if (_consolidationTimer) { 
+        clearInterval(_consolidationTimer); 
+        _consolidationTimer = null; 
+    }
     const barEl = document.getElementById('upload-progress-bar');
     if (barEl) barEl.style.width = '100%';
 }
@@ -178,21 +208,35 @@ if (uploadSubmitBtn) {
         for (const file of files) formData.append('files', file);
 
         try {
-            const response = await fetch('/consolidate', {
+            const response = await authFetch('/consolidate', {
                 method: 'POST',
                 body: formData,
-                credentials: 'include'
             });
 
             if (!response.ok) {
-                let detail = 'Consolidation failed';
-                try { const j = await response.json(); detail = j.detail || detail; } catch {}
+                let detail = `Consolidation failed (HTTP ${response.status})`;
+                if (response.status === 504) {
+                    detail = 'Server gateway timed out (504). Render killed the connection.';
+                } else if (response.status === 502) {
+                    detail = 'Server is currently restarting or unavailable (502 Bad Gateway).';
+                } else {
+                    try {
+                        const j = await response.json();
+                        if (j.detail) detail = j.detail;
+                        else if (j.message) detail = j.message;
+                    } catch {
+                        try {
+                            const txt = await response.text();
+                            if (txt) detail = txt.slice(0, 150);
+                        } catch {}
+                    }
+                }
                 throw new Error(detail);
             }
 
             const data = await response.json();
             if (data.download_url) {
-                const dlRes = await fetch(data.download_url, { credentials: 'include' });
+                const dlRes = await authFetch(data.download_url);
                 await downloadBlobResponse(dlRes, `Master_Daily_Report_${date}.docx`);
 
                 if (uploadResult) uploadResult.classList.remove('hidden');
@@ -202,6 +246,15 @@ if (uploadSubmitBtn) {
                     uploadDownloadLink.download = `Master_Daily_Report_${date}.docx`;
                 }
                 fetchHistory();
+
+                // Notify user if in another tab
+                document.title = `✅ Report Ready! — ${date}`;
+                const resetTitle = () => {
+                    document.title = _originalDocTitle;
+                    window.removeEventListener('focus', resetTitle);
+                };
+                window.addEventListener('focus', resetTitle);
+
             } else {
                 showAlert('Consolidation succeeded but no download URL returned.', 'error');
             }
@@ -230,11 +283,10 @@ if (dbGenerateBtn) {
         if (dbResult) dbResult.classList.add('hidden');
 
         try {
-            const response = await fetch('/api/generate', {
+            const response = await authFetch('/api/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ date }),
-                credentials: 'include'
             });
 
             // /api/generate now streams the DOCX directly
@@ -264,7 +316,7 @@ window.fetchTrackerData = async function() {
     trackerGrid.innerHTML = '<div class="col-span-full flex justify-center py-10"><span class="material-symbols-outlined animate-spin text-primary text-3xl">refresh</span></div>';
 
     try {
-        const res = await fetch(`/api/tracker/${date}`, { credentials: 'include' });
+        const res = await authFetch(`/api/tracker/${date}`);
         if (!res.ok) { trackerGrid.innerHTML = '<div class="col-span-full py-10 text-center text-sm text-error font-medium">Failed to load tracker (auth error?)</div>'; return; }
         const data = await res.json();
 
@@ -330,7 +382,7 @@ window.openReviewModal = function(id, dept, date, status) {
     const contentArea = document.getElementById('modal-content-area');
     contentArea.innerHTML = '<p style="color:#64748b">Loading...</p>';
 
-    fetch(`/api/tracker/${date}`, { credentials: 'include' })
+    authFetch(`/api/tracker/${date}`)
         .then(r => r.json())
         .then(data => {
             const record = data.records?.find(r => r.id === id);
@@ -382,10 +434,9 @@ if (modalRejectBtn)  modalRejectBtn.addEventListener('click',  () => submitRevie
 async function submitReviewAction(status) {
     if (!currentReviewId) return;
     try {
-        const res = await fetch('/api/tracker/review', {
+        const res = await authFetch('/api/tracker/review', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({ id: currentReviewId, status })
         });
         if (!res.ok) { const j = await res.json(); throw new Error(j.detail || 'Update failed'); }
@@ -403,7 +454,7 @@ async function fetchHistory() {
     if (!historyList) return;
 
     try {
-        const res  = await fetch('/api/history', { credentials: 'include' });
+        const res  = await authFetch('/api/history');
         const data = await res.json();
 
         historyList.innerHTML = '';
@@ -440,7 +491,7 @@ async function fetchHistory() {
 window.deleteRecord = async function(date) {
     if (!confirm(`Delete all submissions for ${date}?`)) return;
     try {
-        const res = await fetch(`/api/history/${date}`, { method: 'DELETE', credentials: 'include' });
+        const res = await authFetch(`/api/history/${date}`, { method: 'DELETE' });
         if (res.ok) { fetchHistory(); fetchTrackerData(); showAlert(`Records for ${date} deleted.`, 'success'); }
         else showAlert('Failed to delete record.');
     } catch { showAlert('Network error while deleting.'); }
@@ -454,7 +505,7 @@ if (monthlyBtn) {
     monthlyBtn.addEventListener('click', async () => {
         showLoading(monthlyBtn, monthlyLoadingBtn, true);
         try {
-            const res = await fetch('/api/monthly', { method: 'POST', credentials: 'include' });
+            const res = await authFetch('/api/monthly', { method: 'POST' });
             const data = await res.json();
             showAlert(data.message || 'Monthly report not yet implemented.', 'error');
         } catch { showAlert('Monthly report generation failed.'); }

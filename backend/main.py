@@ -31,13 +31,10 @@ from backend.services.portal_report_service import generate_from_portal
 # Setup application
 app = FastAPI(title="MTP Daily Report API & Portal")
 
-# CORS setup — restrict in production via ALLOWED_ORIGINS env var
-# e.g. ALLOWED_ORIGINS=https://mtp-reportgen.onrender.com,https://yourdomain.com
-_raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
-_origins = [o.strip() for o in _raw_origins.split(",")] if _raw_origins != "*" else ["*"]
+# CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,12 +47,26 @@ def startup_event():
     init_db()
     seed_default_users()
     os.makedirs("generated_reports", exist_ok=True)
+
+@app.get("/health")
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "service": "MTP ReportGen API"}
     
 # --- Dependencies ---
 def get_current_user(request: Request):
+    # 1. Try session_token cookie
     token = request.cookies.get("session_token")
+
+    # 2. Try Authorization: Bearer <token> header fallback
+    if not token:
+        auth_header = request.headers.get("Authorization") or request.headers.get("authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
     user = get_session_user(token)
     if not user:
         raise HTTPException(status_code=401, detail="Session expired or invalid")
@@ -100,16 +111,22 @@ def login(req: LoginRequest, response: Response):
         
     token = create_session(req.username)
     
-    # Set cookie — HttpOnly for security; role info returned in JSON body
+    # Set cookie with explicit root path and permissive samesite
     response.set_cookie(
         key="session_token", 
         value=token, 
-        httponly=True,
+        httponly=False,
+        path="/",
         samesite="lax",
         max_age=7*24*3600
     )
     
-    return {"message": "Logged in successfully", "role": user["role"], "department": user["department"]}
+    return {
+        "message": "Logged in successfully",
+        "token": token,
+        "role": user["role"],
+        "department": user["department"]
+    }
 
 @app.post("/api/logout")
 def logout(request: Request, response: Response):
@@ -287,17 +304,20 @@ async def api_consolidate_files(
         try:
             data = extract_structured_data(file_bytes, dept_code, dept_name, is_library=is_library)
             
-            # If it's the attendance report, extract its charts using win32com
+            # If it's the attendance report, extract its charts (win32com on Windows, graceful fallback on Linux)
             if "attendance" in filename.lower():
-                temp_path = os.path.join("scratch", f"temp_{filename}")
-                os.makedirs("scratch", exist_ok=True)
-                with open(temp_path, "wb") as f:
-                    f.write(file_bytes)
-                from backend.services.chart_extractor import extract_charts_from_docx
-                print("     [INFO] Extracting charts from attendance report...")
-                charts = extract_charts_from_docx(temp_path, "scratch")
-                data["attendance_charts"] = charts
-                print(f"     [OK] Extracted {len(charts)} charts")
+                try:
+                    temp_path = os.path.join("scratch", f"temp_{filename}")
+                    os.makedirs("scratch", exist_ok=True)
+                    with open(temp_path, "wb") as f:
+                        f.write(file_bytes)
+                    from backend.services.chart_extractor import extract_charts_from_docx
+                    print("     [INFO] Extracting charts from attendance report...")
+                    charts = extract_charts_from_docx(temp_path, "scratch")
+                    data["attendance_charts"] = charts
+                    print(f"     [OK] Extracted {len(charts)} charts")
+                except Exception as chart_err:
+                    print(f"     [INFO] Chart extraction skipped/not supported in this environment: {chart_err}")
 
             dept_data.append(data)
             

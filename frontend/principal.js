@@ -1,3 +1,20 @@
+// ── Auth Fetch Helper ────────────────────────────────────────────────────────
+async function authFetch(url, options = {}) {
+    const token = localStorage.getItem('session_token') || '';
+    const headers = new Headers(options.headers || {});
+    if (token && !headers.has('Authorization')) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
+    const opts = { ...options, headers, credentials: 'include' };
+    const res = await fetch(url, opts);
+    if (res.status === 401) {
+        localStorage.removeItem('session_token');
+        alert('Session expired. Redirecting to login...');
+        window.location.href = 'index.html';
+    }
+    return res;
+}
+
 // ── Sidebar Toggle ────────────────────────────────────────────────────────────
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
@@ -46,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchTrackerData() {
         try {
-            const res = await fetch(`/api/tracker/${dateInput.value}`, { credentials: 'include' });
+            const res = await authFetch(`/api/tracker/${dateInput.value}`);
             const data = await res.json();
             
             let html = '';
@@ -89,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchSummary() {
         try {
-            const res = await fetch(`/api/principal/summary/${dateInput.value}`, { credentials: 'include' });
+            const res = await authFetch(`/api/principal/summary/${dateInput.value}`);
             const data = await res.json();
             if (data.record) {
                 summaryEditor.innerHTML = data.record.content || '';
@@ -109,10 +126,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         saveStatus.innerText = 'Saving...';
         try {
-            const res = await fetch('/api/principal/summary', {
+            const res = await authFetch('/api/principal/summary', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
                 body: JSON.stringify({ date, content, status: 'finalized' })
             });
             if (res.ok) {

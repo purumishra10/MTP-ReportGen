@@ -1,3 +1,20 @@
+// ── Auth Fetch Helper ────────────────────────────────────────────────────────
+async function authFetch(url, options = {}) {
+    const token = localStorage.getItem('session_token') || '';
+    const headers = new Headers(options.headers || {});
+    if (token && !headers.has('Authorization')) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
+    const opts = { ...options, headers, credentials: 'include' };
+    const res = await fetch(url, opts);
+    if (res.status === 401) {
+        localStorage.removeItem('session_token');
+        alert('Session expired. Redirecting to login...');
+        window.location.href = 'index.html';
+    }
+    return res;
+}
+
 // ── Sidebar Toggle ────────────────────────────────────────────────────────────
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
@@ -42,7 +59,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ─── Fetch Department Schema ────────────────────────────────
     async function loadAndRenderFormat() {
         try {
-            const response = await fetch(`/api/formats/${deptCode}`, { credentials: 'include' });
+            const response = await authFetch(`/api/formats/${deptCode}`);
             const schema = await response.json();
             if (schema && schema.format) {
                 activeSchema = schema;
@@ -252,10 +269,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         statusChip.innerText = "Processing...";
 
         try {
-            const response = await fetch('/api/department/submit', {
+            const response = await authFetch('/api/department/submit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
                 body: JSON.stringify({
                     date: dateVal,
                     content: JSON.stringify(payload),
@@ -370,7 +386,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!dateVal) return;
 
         try {
-            const resp = await fetch(`/api/department/submission/${dateVal}`, { credentials: 'include' });
+            const resp = await authFetch(`/api/department/submission/${dateVal}`);
             if (!resp.ok) return;
             const data = await resp.json();
 
@@ -481,7 +497,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ═══════════════════════════════════════════════════════════
 
 function logoutPortal() {
-    fetch('/api/logout', { method: 'POST', credentials: 'include' }).finally(() => {
+    authFetch('/api/logout', { method: 'POST' }).finally(() => {
         localStorage.clear();
         window.location.href = 'index.html';
     });
