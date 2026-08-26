@@ -51,7 +51,12 @@ def startup_event():
 @app.get("/health")
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "service": "MTP ReportGen API"}
+    return {
+        "status": "ok",
+        "service": "MTP ReportGen API",
+        "build": "2026-08-26-v3.3-clean-tables",
+        "latest_features": "Clean department highlights, zero table remnants, executive table borders",
+    }
     
 # --- Dependencies ---
 def get_current_user(request: Request):
