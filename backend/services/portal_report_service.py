@@ -508,9 +508,13 @@ def _parse_sections_to_structured(sections: list, dept_code: str, dept_name: str
             result["library_transactions"].update(txn)
             result["library_services"].update(svc)
 
+        elif "student attendance" in title_lower or "b.tech student" in title_lower or "m.tech student" in title_lower:
+            # Explicitly drop student attendance so it NEVER leaks into loose_paragraphs
+            continue
+
         else:
-            # Unclassified tables still go to the LLM as free text
-            extra = "\n".join(_row_as_text(r) for r in rows)
+            # Unclassified tables only go to LLM if they have real content
+            extra = "\n".join(_row_as_text(r) for r in rows if _row_has_data(r))
             if extra:
                 labeled = f"[Other — {title}]\n{extra}"
                 result["loose_paragraphs"] = (

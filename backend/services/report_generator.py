@@ -517,34 +517,8 @@ def _build_mtp_sections(doc, report: dict, section_num: int) -> int:
         text = mtp_narrative.replace("[MTP Section IV]", "").strip()
         for line in text.split("\n"):
             line = line.strip()
-            if line:
+            if line and not line.startswith("["):
                 _add_body_text(doc, line)
-
-    # ── Batch Pills Table (As is) ─────────────────────────────────────────────
-    if batch_pills:
-        _add_sub_heading(doc, "Batch Pills Open Summary")
-        text = batch_pills.replace("[Batch Pills Open Summary]", "").strip()
-        headers, values = _parse_batch_pills_table(text)
-        if headers and values:
-            n_cols = min(len(headers), len(values))
-            tbl = doc.add_table(rows=2, cols=n_cols)
-            tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
-            tbl.style = 'Table Grid'
-            for i, h in enumerate(headers[:n_cols]):
-                cell = tbl.rows[0].cells[i]
-                _set_cell_shading(cell, DARK_BLUE_HEX)
-                _set_cell_text(cell, h, bold=True, font_size=8,
-                               color=WHITE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-            for i, v in enumerate(values[:n_cols]):
-                cell = tbl.rows[1].cells[i]
-                _set_cell_shading(cell, LIGHT_GRAY_HEX)
-                _set_cell_text(cell, v, bold=True, font_size=9,
-                               color=DARK_BLUE, alignment=WD_ALIGN_PARAGRAPH.CENTER)
-        else:
-            for line in text.split("\n"):
-                line = line.strip()
-                if line and not line.startswith("["):
-                    _add_body_text(doc, line)
 
     return section_num + 1
 

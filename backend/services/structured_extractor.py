@@ -348,7 +348,7 @@ def _extract_mtp_section_iv(table) -> tuple[str, str]:
     Extract MTP Section IV data from a table that contains nested tables.
 
     The MTP report has a structure like:
-    Row 0: "III. Students Attendance"
+    Row 0: "III. Students Attendance" (MUST BE SKIPPED)
     Row 1: "IV" | "MTP:" + [nested table with actual narrative + batch pills]
 
     Returns: (mtp_narrative_text, batch_pills_text)
@@ -369,32 +369,47 @@ def _extract_mtp_section_iv(table) -> tuple[str, str]:
             if _is_hod_row(row_text):
                 continue
 
-            # Detect the branch-code header row for Batch Pills
-            if _is_batch_pills_header(row_text):
-                pills_header = row_text
-                continue
+            row_lower = row_text.lower()
 
-            # Detect the numeric values row (must follow after header)
-            if pills_header is not None and pills_values is None and _is_batch_pills_values(row_text):
-                pills_values = row_text
+            # Skip any student attendance rows that might leak in
+            if "student" in row_lower and "attendance" in row_lower:
+                continue
+            if "present" in row_lower or "absent" in row_lower:
                 continue
 
             # Detect title line for batch pills section
-            row_lower = row_text.lower()
             if ("batch" in row_lower and ("pli" in row_lower or "pills" in row_lower)
                     and ("summary" in row_lower or "open" in row_lower)):
                 pills_header_text = row_text
                 continue
 
-            # Otherwise it's MTP narrative — skip if we've already started pills
-            if pills_header is None:
-                # Not yet in pills section — narrative
+            # ONLY detect branch-code header row AFTER pills title line is seen
+            if pills_header_text and pills_header is None and _is_batch_pills_header(row_text):
+                pills_header = row_text
+                continue
+
+            # ONLY detect numeric values row AFTER pills header is seen
+            if pills_header is not None and pills_values is None and _is_batch_pills_values(row_text):
+                pills_values = row_text
+                continue
+
+            # Otherwise it's MTP narrative (before pills section)
+            if not pills_header_text and pills_header is None:
                 if row_text and len(row_text) > 5:
                     mtp_narrative_lines.append(row_text)
 
     for row in table.rows:
+        row_text_all = " ".join(c.text.strip().lower() for c in row.cells)
+        # Skip Section III (Students Attendance) completely
+        if "student" in row_text_all and "attendance" in row_text_all:
+            continue
+        if row_text_all.startswith("iii.") or row_text_all.startswith("iii "):
+            continue
+
         for cell in row.cells:
             cell_text = cell.text.strip().lower()
+            if "student" in cell_text and "attendance" in cell_text:
+                continue
 
             # Check if this cell contains nested tables (the MTP data cell)
             if cell.tables:
@@ -420,14 +435,10 @@ def _extract_mtp_section_iv(table) -> tuple[str, str]:
                 if cell_paragraphs:
                     mtp_narrative_lines.extend(cell_paragraphs)
 
-    # Build clean batch pills text: title + pipe-table only
+    # Build clean batch pills text ONLY if we have actual valid placement pills data
     batch_pills = ""
-    if pills_header_text:
-        batch_pills = pills_header_text + "\n"
-    if pills_header and pills_values:
-        batch_pills += pills_header + "\n" + pills_values
-    elif pills_header:
-        batch_pills += pills_header
+    if pills_header_text and pills_header and pills_values:
+        batch_pills = pills_header_text + "\n" + pills_header + "\n" + pills_values
 
     return "\n".join(mtp_narrative_lines).strip(), batch_pills.strip()
 
