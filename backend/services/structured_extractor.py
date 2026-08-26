@@ -282,15 +282,31 @@ def extract_structured_data(file_bytes: bytes, dept_code: str,
                 result["other_matters_text"] += text + "\n\n"
 
     # ── Loose paragraphs (free text outside tables) ───────────────────────────
-    # ALWAYS collected and forwarded to LLM.
-    # Many departments write events, participation, and other matters as
-    # free-running paragraphs rather than filling in the template table.
-    # We label them clearly so the LLM knows the source.
+    # ONLY collect actual substantive paragraphs typed by departments.
+    # Exclude standard Word template field labels and section prompts.
+    TEMPLATE_PROMPTS = (
+        "daily report", "staff attendance", "students attendance", "student attendance",
+        "infrastructure issues", "event (short term course", "event organized",
+        "participation by staff", "participation by students",
+        "staff joined or left", "classwork adjustment", "incident if any",
+        "any other matter to be reported", "vnr vignana jyothi",
+        "department:", "b. tech", "b.tech", "m. tech", "m.tech", "minor degree"
+    )
+
     loose = []
     for para in doc.paragraphs:
-        text = para.text.strip()
-        if text and len(text) > 10:
-            loose.append(text)
+        # Normalize non-breaking spaces
+        text = para.text.replace("\xa0", " ").strip()
+        if not text or len(text) < 15:
+            continue
+        low = text.lower()
+        # Skip standard template labels
+        if any(low.startswith(p) or p in low and len(low) < 55 for p in TEMPLATE_PROMPTS):
+            continue
+        # Skip pure department name repeats
+        if low == dept_name.lower() or low in ("mathematics and management sciences", "english", "civil engineering"):
+            continue
+        loose.append(text)
 
     if loose:
         result["loose_paragraphs"] = (
@@ -847,18 +863,40 @@ def _extract_library_data(table) -> tuple[dict, dict]:
 # ── Table → text for LLM narrative sections ──────────────────────────────────
 
 def _table_to_text(label: str, table) -> str:
-    """Convert a table to pipe-delimited text for LLM consumption."""
+    """Convert a table to pipe-delimited text for LLM consumption ONLY if it contains filled data rows."""
     rows = _read_table_rows(table)
     if not rows:
         return ""
 
-    # Filter out completely empty rows
-    non_empty = [r for r in rows if any(c.strip() for c in r)]
-    if not non_empty:
+    EMPTY_VALS = {"", "nil", "none", "no", "-", "—", "n/a", "na", "--", "i", "ii", "iii", "iv"}
+    HEADER_KEYWORDS = (
+        "name of the event", "for whom", "participants", "resource person",
+        "s.no", "s. no", "particulars", "designation", "roll no", "r. no", "id no",
+        "industry visited", "location of the industry", "no. of students visited",
+        "staff/student", "date of the visit", "date and duration", "status (delegate",
+        "delegate /paper", "delegate / paper"
+    )
+
+    # Find rows that have actual filled content in columns 1+
+    data_rows = []
+    for row in rows:
+        row_str = " ".join(row).lower()
+        # Skip header rows
+        if any(h in row_str for h in HEADER_KEYWORDS):
+            continue
+        # Check if cells beyond S.No have substantive text (>2 chars, not empty/nil)
+        substantive = [c.strip() for c in row[1:] if c.strip().lower() not in EMPTY_VALS and len(c.strip()) > 2]
+        if substantive:
+            data_rows.append(row)
+
+    if not data_rows:
         return ""
 
+    # Include label + header rows + data rows
     lines = [f"[{label}]"]
-    for row in non_empty:
+    for row in rows[:2]:
+        lines.append(" | ".join(row))
+    for row in data_rows:
         lines.append(" | ".join(row))
 
     return "\n".join(lines)

@@ -440,7 +440,11 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
                 print(f"[WARN] MTP summary extraction failed: {e}")
 
     # ── Reconcile all standard academic departments (including missing status) ──
-    combined_highlights = _merge_highlights(det_highlights, llm_highlights)
+    valid_narrative_codes = {b["dept_code"].lower() for b in narrative_blocks}
+    for b in narrative_blocks:
+        valid_narrative_codes.add(b["dept_name"].lower())
+
+    combined_highlights = _merge_highlights(det_highlights, llm_highlights, valid_dept_codes=valid_narrative_codes)
     final_report["department_highlights"] = _build_all_department_roster(
         STANDARD_ACADEMIC_DEPTS, uploaded_dept_codes, combined_highlights, dept_data
     )
@@ -674,19 +678,22 @@ def _deterministic_narratives(dept_data: list[dict]) -> tuple[list, list, list]:
     return highlights, staff_p, student_p
 
 
-def _merge_highlights(deterministic: list, llm_blocks: list) -> list:
+def _merge_highlights(deterministic: list, llm_blocks: list, valid_dept_codes: set[str] = None) -> list:
     """Prefer LLM wording when a department is covered; keep deterministic otherwise."""
     by_code = {}
     for block in deterministic:
         key = (block.get("dept_code") or block.get("dept") or "").lower()
         by_code[key] = block
     for block in llm_blocks:
+        key = (block.get("dept_code") or block.get("dept") or "").lower()
+        # If valid_dept_codes is provided, ONLY allow departments that actually had narrative input
+        if valid_dept_codes is not None and not any(v in key or key in v for v in valid_dept_codes):
+            continue
         events = block.get("events") or []
         raw_other = block.get("other_matters") or []
         other = [m for m in raw_other if _is_real_note(m)]
         if not events and not other:
             continue
-        key = (block.get("dept_code") or block.get("dept") or "").lower()
         block["other_matters"] = other
         by_code[key] = block
     return list(by_code.values())
@@ -743,13 +750,14 @@ def _build_all_department_roster(
 
     handled_keys = set()
     seen_event_keys = set()
+    seen_other_keys = set()
 
     for std in standard_depts:
         found_h = _find_highlight(std)
         uploaded = _is_uploaded(std)
 
         raw_events = found_h.get("events", []) if found_h else []
-        other = found_h.get("other_matters", []) if found_h else []
+        raw_other = found_h.get("other_matters", []) if found_h else []
 
         events = []
         for ev in raw_events:
@@ -759,6 +767,13 @@ def _build_all_department_roster(
             if sig not in seen_event_keys:
                 seen_event_keys.add(sig)
                 events.append(ev)
+
+        other = []
+        for note in raw_other:
+            note_str = str(note).strip().lower()[:50]
+            if note_str and note_str not in seen_other_keys:
+                seen_other_keys.add(note_str)
+                other.append(note)
 
         if found_h:
             handled_keys.add((found_h.get("dept_code") or "").lower())
