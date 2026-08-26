@@ -47,6 +47,11 @@ def startup_event():
     init_db()
     seed_default_users()
     os.makedirs("generated_reports", exist_ok=True)
+
+@app.get("/health")
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "service": "MTP ReportGen API"}
     
 # --- Dependencies ---
 def get_current_user(request: Request):
@@ -283,17 +288,20 @@ async def api_consolidate_files(
         try:
             data = extract_structured_data(file_bytes, dept_code, dept_name, is_library=is_library)
             
-            # If it's the attendance report, extract its charts using win32com
+            # If it's the attendance report, extract its charts (win32com on Windows, graceful fallback on Linux)
             if "attendance" in filename.lower():
-                temp_path = os.path.join("scratch", f"temp_{filename}")
-                os.makedirs("scratch", exist_ok=True)
-                with open(temp_path, "wb") as f:
-                    f.write(file_bytes)
-                from backend.services.chart_extractor import extract_charts_from_docx
-                print("     [INFO] Extracting charts from attendance report...")
-                charts = extract_charts_from_docx(temp_path, "scratch")
-                data["attendance_charts"] = charts
-                print(f"     [OK] Extracted {len(charts)} charts")
+                try:
+                    temp_path = os.path.join("scratch", f"temp_{filename}")
+                    os.makedirs("scratch", exist_ok=True)
+                    with open(temp_path, "wb") as f:
+                        f.write(file_bytes)
+                    from backend.services.chart_extractor import extract_charts_from_docx
+                    print("     [INFO] Extracting charts from attendance report...")
+                    charts = extract_charts_from_docx(temp_path, "scratch")
+                    data["attendance_charts"] = charts
+                    print(f"     [OK] Extracted {len(charts)} charts")
+                except Exception as chart_err:
+                    print(f"     [INFO] Chart extraction skipped/not supported in this environment: {chart_err}")
 
             dept_data.append(data)
             

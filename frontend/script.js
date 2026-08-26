@@ -51,7 +51,7 @@ function showLoading(submitBtn, loadingBtn, show) {
 // Download a blob from a fetch response
 async function downloadBlobResponse(response, filename) {
     if (!response.ok) {
-        let detail = 'Request failed';
+        let detail = `Request failed (${response.status})`;
         try { const j = await response.json(); detail = j.detail || j.error || detail; } catch {}
         throw new Error(detail);
     }
@@ -63,9 +63,11 @@ async function downloadBlobResponse(response, filename) {
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-    return url; // return so we can also set on download link
+    setTimeout(() => {
+        if (a.parentNode) document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 60000);
+    return url;
 }
 
 // ── Initialise date pickers ────────────────────────────────────────────────────
@@ -121,18 +123,17 @@ const uploadDownloadLink = document.getElementById('upload-download-link');
 // ── Consolidation timer helpers ────────────────────────────────────────────────
 const CONSOLIDATION_STAGES = [
     { at: 0,   msg: 'Uploading department files to server...' },
-    { at: 5,   msg: 'Reading and parsing DOCX files...' },
-    { at: 15,  msg: 'Extracting attendance & infrastructure data...' },
-    { at: 25,  msg: 'Running AI narrative summarisation...' },
-    { at: 45,  msg: 'Summarising department activities with Gemma-4...' },
-    { at: 65,  msg: 'Extracting MTP placement highlights...' },
-    { at: 85,  msg: 'Assembling final DOCX report...' },
-    { at: 100, msg: 'Almost done — finalising report...' },
-    { at: 120, msg: 'Large batch detected — still working, hang tight...' },
-    { at: 150, msg: 'Completing last AI calls — nearly there...' },
+    { at: 2,   msg: 'Reading and parsing DOCX structured tables...' },
+    { at: 5,   msg: 'Extracting attendance, infra & department metrics...' },
+    { at: 10,  msg: 'Running AI narrative summarisation with Gemini...' },
+    { at: 20,  msg: 'Extracting MTP placement & training activities...' },
+    { at: 35,  msg: 'Assembling formatted Master DOCX report...' },
+    { at: 45,  msg: 'Almost done — finalizing report...' },
+    { at: 60,  msg: 'Large batch processing — completing final checks...' },
 ];
 
 let _consolidationTimer = null;
+let _originalDocTitle = document.title;
 
 function startConsolidationTimer() {
     const timerEl   = document.getElementById('upload-timer-display');
@@ -140,23 +141,31 @@ function startConsolidationTimer() {
     const barEl     = document.getElementById('upload-progress-bar');
     if (!timerEl || !statusEl) return;
 
-    let elapsed = 0;
-    // Simulate progress: goes to ~85% over 150s, never reaches 100% until done
-    const getBarPct = (s) => Math.min(85, (s / 150) * 85);
+    const startTime = Date.now();
+    _originalDocTitle = document.title;
 
-    _consolidationTimer = setInterval(() => {
-        elapsed++;
+    // Simulate progress smoothly based on wall-clock time so tab switches don't stall it
+    const getBarPct = (s) => Math.min(92, (s / 45) * 92);
+
+    const tick = () => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
         timerEl.textContent = elapsed + 's';
         if (barEl) barEl.style.width = getBarPct(elapsed) + '%';
 
         // Find the most recent stage message
         const stage = [...CONSOLIDATION_STAGES].reverse().find(s => elapsed >= s.at);
         if (stage) statusEl.textContent = stage.msg;
-    }, 1000);
+    };
+
+    tick();
+    _consolidationTimer = setInterval(tick, 500);
 }
 
 function stopConsolidationTimer() {
-    if (_consolidationTimer) { clearInterval(_consolidationTimer); _consolidationTimer = null; }
+    if (_consolidationTimer) { 
+        clearInterval(_consolidationTimer); 
+        _consolidationTimer = null; 
+    }
     const barEl = document.getElementById('upload-progress-bar');
     if (barEl) barEl.style.width = '100%';
 }
@@ -185,8 +194,23 @@ if (uploadSubmitBtn) {
             });
 
             if (!response.ok) {
-                let detail = 'Consolidation failed';
-                try { const j = await response.json(); detail = j.detail || detail; } catch {}
+                let detail = `Consolidation failed (HTTP ${response.status})`;
+                if (response.status === 504) {
+                    detail = 'Server gateway timed out (504). Render killed the connection.';
+                } else if (response.status === 502) {
+                    detail = 'Server is currently restarting or unavailable (502 Bad Gateway).';
+                } else {
+                    try {
+                        const j = await response.json();
+                        if (j.detail) detail = j.detail;
+                        else if (j.message) detail = j.message;
+                    } catch {
+                        try {
+                            const txt = await response.text();
+                            if (txt) detail = txt.slice(0, 150);
+                        } catch {}
+                    }
+                }
                 throw new Error(detail);
             }
 
@@ -202,6 +226,15 @@ if (uploadSubmitBtn) {
                     uploadDownloadLink.download = `Master_Daily_Report_${date}.docx`;
                 }
                 fetchHistory();
+
+                // Notify user if in another tab
+                document.title = `✅ Report Ready! — ${date}`;
+                const resetTitle = () => {
+                    document.title = _originalDocTitle;
+                    window.removeEventListener('focus', resetTitle);
+                };
+                window.addEventListener('focus', resetTitle);
+
             } else {
                 showAlert('Consolidation succeeded but no download URL returned.', 'error');
             }
