@@ -75,14 +75,13 @@ def _get_openrouter_client():
 
 # Gemini models in priority order — modern aliases tested and confirmed working
 GEMINI_MODELS = [
-    "models/gemini-3.7-flash",
-    "gemini-3.7-flash",
-    "models/gemini-3.5-flash",
-    "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
     "models/gemini-3.5-flash-lite",
+    "models/gemini-3.7-flash",
+    "gemini-3.7-flash",
     "gemini-2.5-flash",
     "models/gemini-2.5-flash",
+    "gemini-flash-latest",
 ]
 
 # OpenRouter fallback models
@@ -98,102 +97,115 @@ OPENROUTER_MODELS = [
 # numeric data that was already extracted deterministically. It only ever sees
 # the events/participation/free-text sections.
 
-SUMMARIZE_SYSTEM_PROMPT = """You are a report summarizer for VNRVJIET (VNR Vignana Jyothi Institute of Engineering & Technology).
+SUMMARIZE_SYSTEM_PROMPT = """You are an executive institutional report editor for VNRVJIET (VNR Vignana Jyothi Institute of Engineering & Technology).
 
-You will receive narrative sections from department daily reports: events, staff/student participation entries, industry visits, and any other free-text matters.
+You will receive narrative text from department daily reports: workshops, guest lectures, seminars, FDPs, student achievements, faculty publications, and free-text updates.
 
-YOUR ONLY JOB: faithfully summarize and organize narrative content.
+YOUR CORE OBJECTIVES:
+1. FORMAL COLLEGE ENGLISH: The raw department reports often contain grammar issues, shorthand phrasing, or poor sentence structure. Proofread and rewrite all narratives into crisp, professional, college-formal English suitable for the Principal and Management.
+2. 99% HIGHLIGHT RETENTION: Retain 100% of distinct, real events, guest lectures, workshops, seminars, and achievements. DO NOT drop or omit events unless they are empty or redundant duplicates.
+3. CONCISE & INFORMATIVE: Keep each event summary to 1–2 crisp sentences highlighting the topic, resource person/agency, participant count (if given), and key outcome.
+4. ABSOLUTE FACT INTEGRITY: Preserve all factual details, names of speakers/faculty/students, dates, counts, and metrics EXACTLY as stated. DO NOT invent any facts or numbers. Use null if a number is not in the source.
+5. STRICT DEPARTMENT ISOLATION:
+   - ONLY extract events under a department if they were explicitly described in THAT department's input block.
+   - NEVER copy, duplicate, or assign events from one department (e.g. CSE) to other departments (e.g. Civil, English, Mech, EEE, etc.).
+   - If a department has no events in its input section, DO NOT include it in `department_highlights` or return `events: []`.
+6. CLEAN DEDUPLICATION & SEPARATION:
+   - Department-hosted events/workshops for students go to `department_highlights`.
+   - Faculty external participation/FDPs/paper presentations go to `staff_participation`.
+   - Student external hackathons/competitions/paper presentations go to `student_participation`.
+   - If an item is listed in highlights, DO NOT duplicate it in participation.
+7. IMPORTANCE RATING (For internal sorting):
+   - "high": Keynote/guest lectures by industry/foreign experts, competitive national awards, major patents/funded projects, >50 participants.
+   - "medium": Internal department workshops, FDPs, NPTEL/certifications, 20–50 participants.
+   - "low": Routine department meetings, minor internal activities, <20 participants.
+8. Return ONLY valid JSON matching the exact schema below without any markdown fences.
 
-══════════════════════════════════════════════════════
-ABSOLUTE RULES:
-1. Every fact must come DIRECTLY from the input. DO NOT infer, guess, or add anything.
-2. Use EXACT WORDS from the source wherever possible.
-3. DO NOT INVENT ANY NUMBER. Use null for any count not explicitly stated in the source.
-4. Return ONLY valid JSON. No explanation, no preamble, no markdown code fences.
-5. DO NOT SKIP ANY EVENT or participation entry.
-6. If a section is empty or only "nil"/"none"/"-", skip it.
-══════════════════════════════════════════════════════
-
-SOURCES YOU WILL RECEIVE:
-- [Events / Seminars / Workshops] — table rows
-- [Participation by Staff] — table rows
-- [Participation by Students] — table rows
-- [Free Text — <dept name>] — paragraphs written outside the template tables
-- [Other] — unclassified table content
-
-TREAT ALL SOURCES EQUALLY. Many departments write events as free text paragraphs.
-
-For each EVENT:
-- "name": exact event name
-- "summary": 1-3 sentences using source wording; include resource person, count (if stated), venue
-- "importance": "high" (external events, industry/academia speakers, >50 participants if stated, competitive/national events) | "medium" (internal 20-50 participants) | "low" (routine <20 participants)
-- "date": exact date string or null
-- "duration": duration string or null
-- "participants_internal": integer from source ONLY or null
-- "participants_external": integer from source ONLY or null
-- "resource_person": name or null
-
-For each STAFF PARTICIPATION:
-- "name", "dept", "event", "role", "date" (or null), "venue" (or null), "summary" (1 sentence)
-
-For each STUDENT PARTICIPATION:
-- "name" (or "students"), "dept", "event", "achievement", "date" (or null), "summary" (1 sentence)
-
-For OTHER MATTERS: preserve the exact description.
-
-OUTPUT (return ONLY this JSON):
+OUTPUT SCHEMA:
 {
   "department_highlights": [
     {
-      "dept": "full department name",
-      "dept_code": "short code",
-      "events": [{"name": "...", "summary": "...", "importance": "high|medium|low", "date": null, "duration": null, "participants_internal": null, "participants_external": null, "resource_person": null}],
-      "other_matters": ["string"]
+      "dept": "Full Department Name",
+      "dept_code": "short_code (e.g. cse, ece)",
+      "events": [
+        {
+          "name": "Exact polished event title",
+          "summary": "1-2 sentence polished executive summary in formal English",
+          "importance": "high|medium|low",
+          "date": "exact date string or null",
+          "duration": "duration string or null",
+          "participants_internal": null,
+          "participants_external": null,
+          "resource_person": "Speaker Name, Designation, Organization or null"
+        }
+      ],
+      "other_matters": ["Polished note on other significant departmental matters"]
     }
   ],
-  "staff_participation": [{"name": "...", "dept": "...", "event": "...", "role": "...", "date": null, "venue": null, "summary": "..."}],
-  "student_participation": [{"name": "...", "dept": "...", "event": "...", "achievement": "...", "date": null, "summary": "..."}]
-}
+  "staff_participation": [
+    {
+      "name": "Faculty Name",
+      "dept": "Department",
+      "event": "Event Name",
+      "role": "Paper Presenter / Attendee / Session Chair / Resource Person",
+      "date": "date string or null",
+      "venue": "Venue/Institution or null",
+      "summary": "1 concise sentence in formal English",
+      "importance": "high|medium|low"
+    }
+  ],
+  "student_participation": [
+    {
+      "name": "Student Name(s) / Team",
+      "dept": "Department",
+      "event": "Event / Competition Name",
+      "achievement": "1st Prize / Finalist / Participant",
+      "date": "date string or null",
+      "summary": "1 concise sentence in formal English",
+      "importance": "high|medium|low"
+    }
+  ]
+}"""
 
-Rules: Group events under their department. Include a dept only if it has at least one event or noteworthy matter."""
 
+# ── Dedicated MTP extraction prompt (Maintains source order & noise reduction) ──
 
-# ── Dedicated MTP extraction prompt (kept separate to avoid bloating main prompt) ──
-
-MTP_SYSTEM_PROMPT = """You extract placement and training activity data from MTP (Mentoring, Training & Placements) report text.
+MTP_SYSTEM_PROMPT = """You extract and structure placement and training activity data from the VNRVJIET MTP (Mentoring, Training & Placements) daily report.
 
 RULES:
-1. Extract EVERY distinct activity: placement drives, PPTs, aptitude tests, training sessions, mock interviews, internships.
-2. Use EXACT WORDS from the source. DO NOT invent any number — use null if not stated.
-3. Return ONLY valid JSON array. No preamble, no markdown fences.
+1. MAINTAIN SOURCE ORDER: Extract activities in the EXACT sequential order in which they appear in the source report.
+2. FORMAL PLACEMENT OFFICE ENGLISH: Proofread and refine text into polished, professional institutional English (concise 1–2 sentences).
+3. NOISE & DUPLICATE REDUCTION: Merge redundant mentions of the same company/drive into a single coherent entry. Remove routine administrative boilerplate.
+4. PRESERVE NUMBERS & FACTS: Extract company names, test/interview stages, student counts, batch years, and CTC/package (if stated) exactly as provided. DO NOT invent numbers.
+5. Return ONLY a valid JSON array: [{...}, {...}] without markdown fences.
 
-For each activity output:
+Schema for each entry:
 {
-  "company": "company name or null",
+  "company": "Company Name (or Training/Program Name if no company)",
   "activity_type": "placement_drive|ppt|aptitude_test|training|mock_interview|internship|other",
-  "summary": "1-2 sentences using exact source wording",
-  "student_count": null,
-  "batch": "batch year string or null",
-  "status": "brief status from source or null"
-}
-
-Return a JSON array: [{...}, {...}]"""
+  "summary": "1-2 concise sentences in formal English detailing the activity, stage, and outcomes",
+  "student_count": integer or null,
+  "batch": "Batch year string (e.g. 2026 Batch) or null",
+  "status": "In Progress / Completed / Shortlisted / Scheduled or null"
+}"""
 
 
 def _extract_mtp_summary(mtp_narrative: str) -> list[dict]:
     """
-    Dedicated LLM call to extract structured MTP activity items from the raw narrative.
-    Kept separate from main dept summarization to avoid bloating that prompt.
+    Dedicated LLM call to extract structured MTP activity items in source order.
     """
     if not mtp_narrative or not mtp_narrative.strip():
         return []
     try:
-        user_msg = f"Extract all MTP activities from this report text:\n\n{mtp_narrative.strip()}"
+        user_msg = (
+            "Extract and structure all placement and training activities in their original sequential order.\n"
+            "Polish the English into formal placement office tone and eliminate duplicate company mentions:\n\n"
+            f"{mtp_narrative.strip()}"
+        )
         raw = _llm_call(MTP_SYSTEM_PROMPT, user_msg)
         parsed = _parse_json(raw, context="mtp_summary_extraction")
         if isinstance(parsed, list):
             return parsed
-        # Sometimes LLM wraps in {"mtp_summary": [...]}
         if isinstance(parsed, dict):
             for key in ("mtp_summary", "activities", "items"):
                 if key in parsed and isinstance(parsed[key], list):
@@ -241,12 +253,30 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
         "library_services": {},
     }
 
+    # ── Standard Academic Departments Registry ────────────────────────────────
+    STANDARD_ACADEMIC_DEPTS = [
+        {"code": "cse", "name": "Computer Science & Engineering", "aliases": ["cse", "computer science"]},
+        {"code": "ece", "name": "Electronics & Communication Engineering", "aliases": ["ece", "electronics and communication"]},
+        {"code": "eee", "name": "Electrical & Electronics Engineering", "aliases": ["eee", "electrical and electronics"]},
+        {"code": "eie", "name": "Electronics & Instrumentation Engineering", "aliases": ["eie", "electronics and instrumentation"]},
+        {"code": "it", "name": "Information Technology", "aliases": ["it", "information technology"]},
+        {"code": "me", "name": "Mechanical Engineering", "aliases": ["me", "mechanical"]},
+        {"code": "civil", "name": "Civil Engineering", "aliases": ["ce", "civil"]},
+        {"code": "ae", "name": "Automobile Engineering", "aliases": ["ae", "automobile"]},
+        {"code": "aiml", "name": "CSE (AI & ML and IoT)", "aliases": ["aiml", "cse-aiml", "iot"]},
+        {"code": "cys", "name": "CSE (CyS, DS) and AI & DS", "aliases": ["cys", "ds", "aids", "ai&ds"]},
+        {"code": "chem", "name": "Humanities & Sciences (Chemistry)", "aliases": ["chem", "chemistry"]},
+        {"code": "english", "name": "Humanities & Sciences (English)", "aliases": ["eng", "english", "h&s"]},
+        {"code": "mms", "name": "Humanities & Sciences (Mathematics & Management Sciences)", "aliases": ["mms", "m&ms", "maths"]},
+    ]
+
     narrative_blocks = []  # Collect narrative text for LLM
-    student_attendance_rows = []
+    uploaded_dept_codes = set()
 
     for dept in dept_data:
-        dept_code = dept["dept_code"]
+        dept_code = dept["dept_code"].lower()
         dept_name = dept["dept_name"]
+        uploaded_dept_codes.add(dept_code)
 
         # Attendance charts
         if dept.get("attendance_charts"):
@@ -255,22 +285,9 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
         # Attendance — deterministic, never goes to LLM
         raw_att = dept.get("attendance")
         if raw_att:
-            students = (
-                raw_att.get("_students")
-                or raw_att.get("students")
-                or dept.get("student_attendance")
-                or {}
-            )
             flat_att = _normalize_staff_attendance(raw_att, dept_name)
             if flat_att:
                 final_report["attendance"]["departments"].append(flat_att)
-            student_attendance_rows.extend(
-                _student_rows_from_nested(students, dept_name)
-            )
-        elif dept.get("student_attendance"):
-            student_attendance_rows.extend(
-                _student_rows_from_nested(dept["student_attendance"], dept_name)
-            )
 
         # Library attendance — deterministic
         if dept.get("library_attendance"):
@@ -309,10 +326,8 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
         # Overall Attendance — deterministic (from separate file)
         if dept.get("overall_staff_attendance_table"):
             final_report["overall_staff_attendance_table"] = dept["overall_staff_attendance_table"]
-        if dept.get("overall_student_attendance_table"):
-            final_report["overall_student_attendance_table"] = dept["overall_student_attendance_table"]
 
-        # MTP narrative — sent to LLM for summarization (numbers guarded by prompt)
+        # MTP narrative — sent exclusively to MTP LLM extractor
         if dept.get("mtp_narrative"):
             final_report["mtp_narrative"] = dept["mtp_narrative"]
         if dept.get("mtp_batch_pills"):
@@ -322,9 +337,12 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
                 if isinstance(item, dict) and item not in final_report["mtp_summary"]:
                     final_report["mtp_summary"].append(item)
 
-        # ── Collect narrative text for LLM ────────────────────────────────
-        # IMPORTANT: We collect ALL narrative text including loose_paragraphs.
-        # Departments often write events as free text rather than filling the table.
+        # ── Collect narrative text for LLM (Academic departments ONLY) ───────
+        # MTP, Library, and pure attendance files have their own dedicated sections
+        NON_ACADEMIC_DEPTS = {"mtp", "library", "overall_attendance", "attendance"}
+        if dept_code in NON_ACADEMIC_DEPTS:
+            continue
+
         narrative_parts = []
         for key in [
             "events_text",
@@ -355,9 +373,6 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
                 "text": "\n\n".join(narrative_parts),
             })
 
-    if student_attendance_rows:
-        final_report["student_attendance"] = student_attendance_rows
-
     det_highlights, det_staff, det_students = _deterministic_narratives(dept_data)
     final_report["department_highlights"] = det_highlights
     if det_staff:
@@ -379,10 +394,10 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
         if mtp_narrative and not final_report.get("mtp_summary"):
             mtp_future = executor.submit(_extract_mtp_summary, mtp_narrative)
 
+        llm_highlights = []
         if narrative_future:
             try:
                 llm_result = narrative_future.result()
-                # Normalize: sometimes LLM wraps department_highlights directly as a list
                 if isinstance(llm_result, list):
                     if llm_result and isinstance(llm_result[0], dict) and (
                         "dept" in llm_result[0] or "events" in llm_result[0]
@@ -391,7 +406,6 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
                                       "staff_participation": [],
                                       "student_participation": []}
                     else:
-                        print(f"[WARNING] LLM returned unknown list format, skipping")
                         llm_result = {}
 
                 if isinstance(llm_result, dict):
@@ -399,11 +413,8 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
                         raw_highlights = llm_result["department_highlights"]
                         llm_highlights = [
                             b for b in raw_highlights
-                            if isinstance(b, dict) and b.get("dept_code", "").lower() != "mtp"
+                            if isinstance(b, dict) and b.get("dept_code", "").lower() not in NON_ACADEMIC_DEPTS
                         ]
-                        final_report["department_highlights"] = _merge_highlights(
-                            det_highlights, llm_highlights
-                        )
                     if llm_result.get("staff_participation"):
                         final_report["staff_participation"] = llm_result["staff_participation"]
                     elif det_staff:
@@ -414,15 +425,10 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
                         final_report["student_participation"] = det_students
                     if llm_result.get("mtp_summary"):
                         final_report["mtp_summary"] = llm_result["mtp_summary"]
-                else:
-                    print(f"[WARNING] LLM returned unexpected type: {type(llm_result)}")
             except Exception as e:
                 import traceback
                 print(f"[ERROR] LLM summarization failed: {e}")
                 traceback.print_exc()
-                print("[INFO] Continuing with deterministic data only.")
-                if det_highlights:
-                    final_report["department_highlights"] = det_highlights
 
         if mtp_future:
             try:
@@ -432,6 +438,24 @@ def consolidate(report_date: str, dept_data: list[dict]) -> dict:
                     print(f"  [OK] Extracted {len(mtp_items)} MTP activity items")
             except Exception as e:
                 print(f"[WARN] MTP summary extraction failed: {e}")
+
+    # ── Reconcile all standard academic departments (including missing status) ──
+    combined_highlights = _merge_highlights(det_highlights, llm_highlights)
+    final_report["department_highlights"] = _build_all_department_roster(
+        STANDARD_ACADEMIC_DEPTS, uploaded_dept_codes, combined_highlights, dept_data
+    )
+
+    # ── Sort participation by importance (High -> Medium -> Low) ──────────────
+    def _imp_val(item):
+        imp = str(item.get("importance", "low")).lower()
+        if "high" in imp: return 3
+        if "med" in imp: return 2
+        return 1
+
+    if final_report.get("staff_participation"):
+        final_report["staff_participation"].sort(key=_imp_val, reverse=True)
+    if final_report.get("student_participation"):
+        final_report["student_participation"].sort(key=_imp_val, reverse=True)
 
     # ── Clean up empty sections ───────────────────────────────────────────
     final_report = _remove_empty_sections(final_report)
@@ -605,6 +629,20 @@ def _student_rows_from_nested(students: dict, dept_name: str) -> list[dict]:
     return rows
 
 
+def _is_real_note(text: str) -> bool:
+    """Filter out table headers or raw pipe remnants that leaked into other matters."""
+    if not text or not isinstance(text, str):
+        return False
+    t = text.strip()
+    if not t or t.lower() in {"nil", "none", "no", "-", "—", "n/a", "na", "--"}:
+        return False
+    if "|" in t and any(k in t.lower() for k in ("rolls", "present", "absent", "s. no", "industry visited", "location")):
+        return False
+    if t.startswith("[Other]") and len(t) < 15:
+        return False
+    return True
+
+
 def _deterministic_narratives(dept_data: list[dict]) -> tuple[list, list, list]:
     """Build highlights and participation lists from structured portal/extractor fields."""
     highlights = []
@@ -617,7 +655,9 @@ def _deterministic_narratives(dept_data: list[dict]) -> tuple[list, list, list]:
         events = [e for e in (dept.get("events") or []) if isinstance(e, dict) and (e.get("name") or e.get("summary"))]
         other = []
         if dept.get("other_matters_text") and _has_real_narrative_content(dept["other_matters_text"]):
-            other.append(dept["other_matters_text"].strip())
+            raw_text = dept["other_matters_text"].strip()
+            if _is_real_note(raw_text):
+                other.append(raw_text)
         if events or other:
             highlights.append({
                 "dept": dept.get("dept_name") or dept_code,
@@ -642,12 +682,144 @@ def _merge_highlights(deterministic: list, llm_blocks: list) -> list:
         by_code[key] = block
     for block in llm_blocks:
         events = block.get("events") or []
-        other = block.get("other_matters") or []
+        raw_other = block.get("other_matters") or []
+        other = [m for m in raw_other if _is_real_note(m)]
         if not events and not other:
             continue
         key = (block.get("dept_code") or block.get("dept") or "").lower()
+        block["other_matters"] = other
         by_code[key] = block
     return list(by_code.values())
+
+
+def _build_all_department_roster(
+    standard_depts: list[dict],
+    uploaded_codes: set[str],
+    highlights: list[dict],
+    dept_data: list[dict],
+) -> list[dict]:
+    """
+    Ensure every standard academic department is represented in the highlights section:
+    - active: has real events/other matters
+    - no_highlights: department was uploaded, but has no events today
+    - missing_report: department report was not uploaded in the batch
+    """
+    roster = []
+    highlights_by_key = {}
+    for h in highlights:
+        code = (h.get("dept_code") or "").lower()
+        name = (h.get("dept") or "").lower()
+        if code:
+            highlights_by_key[code] = h
+        if name:
+            highlights_by_key[name] = h
+
+    def _is_uploaded(std):
+        if std["code"] in uploaded_codes:
+            return True
+        for alias in std.get("aliases", []):
+            if alias in uploaded_codes:
+                return True
+        for d in dept_data:
+            d_code = (d.get("dept_code") or "").lower()
+            d_name = (d.get("dept_name") or "").lower()
+            if std["code"] in d_code or std["code"] in d_name:
+                return True
+            for alias in std.get("aliases", []):
+                if alias in d_code or alias in d_name:
+                    return True
+        return False
+
+    def _find_highlight(std):
+        if std["code"] in highlights_by_key:
+            return highlights_by_key[std["code"]]
+        for alias in std.get("aliases", []):
+            if alias in highlights_by_key:
+                return highlights_by_key[alias]
+        for key, h in highlights_by_key.items():
+            if std["code"] in key or any(a in key for a in std.get("aliases", [])):
+                return h
+        return None
+
+    handled_keys = set()
+    seen_event_keys = set()
+
+    for std in standard_depts:
+        found_h = _find_highlight(std)
+        uploaded = _is_uploaded(std)
+
+        raw_events = found_h.get("events", []) if found_h else []
+        other = found_h.get("other_matters", []) if found_h else []
+
+        events = []
+        for ev in raw_events:
+            ev_name = (ev.get("name") or "").strip().lower()
+            ev_sum = (ev.get("summary") or "").strip().lower()[:40]
+            sig = (ev_name, ev_sum)
+            if sig not in seen_event_keys:
+                seen_event_keys.add(sig)
+                events.append(ev)
+
+        if found_h:
+            handled_keys.add((found_h.get("dept_code") or "").lower())
+            handled_keys.add((found_h.get("dept") or "").lower())
+
+        if events or other:
+            roster.append({
+                "dept": std["name"],
+                "dept_code": std["code"],
+                "status": "active",
+                "events": events,
+                "other_matters": other,
+            })
+        elif uploaded:
+            roster.append({
+                "dept": std["name"],
+                "dept_code": std["code"],
+                "status": "no_highlights",
+                "events": [],
+                "other_matters": [],
+                "message": "No significant highlights reported for today.",
+            })
+        else:
+            roster.append({
+                "dept": std["name"],
+                "dept_code": std["code"],
+                "status": "missing_report",
+                "events": [],
+                "other_matters": [],
+                "message": "Report not submitted / data not available for today.",
+            })
+
+    EXCLUDED = {"mtp", "library", "overall_attendance", "attendance"}
+    for h in highlights:
+        h_code = (h.get("dept_code") or "").lower()
+        h_name = (h.get("dept") or "").lower()
+        if h_code in EXCLUDED or h_name in EXCLUDED:
+            continue
+        if h_code not in handled_keys and h_name not in handled_keys:
+            raw_events = h.get("events") or []
+            events = []
+            for ev in raw_events:
+                ev_name = (ev.get("name") or "").strip().lower()
+                ev_sum = (ev.get("summary") or "").strip().lower()[:40]
+                sig = (ev_name, ev_sum)
+                if sig not in seen_event_keys:
+                    seen_event_keys.add(sig)
+                    events.append(ev)
+            other = h.get("other_matters") or []
+            if events or other:
+                roster.append({
+                    "dept": h.get("dept") or h_code.upper(),
+                    "dept_code": h_code,
+                    "status": "active",
+                    "events": events,
+                    "other_matters": other,
+                })
+            handled_keys.add(h_code)
+            handled_keys.add(h_name)
+
+    return roster
 
 
 def _has_real_narrative_content(text: str) -> bool:
@@ -748,11 +920,12 @@ def _llm_call(system: str, user: str) -> str:
 
                 except Exception as e:
                     err_str = str(e).lower()
-                    if "404" in err_str or "not found" in err_str:
-                        break  # Move immediately to next model
                     print(f"[LLM] Gemini warning ({model_name}, attempt {attempt+1}/2): {e}")
-                    if attempt < 1 and ("429" in err_str or "unavailable" in err_str):
-                        time.sleep(1.5)
+                    if "404" in err_str or "not found" in err_str or "503" in err_str or "unavailable" in err_str or "429" in err_str or "quota" in err_str:
+                        # Move immediately to next model in fallback list
+                        break
+                    if attempt < 1:
+                        time.sleep(0.5)
                         continue
                     break
 
