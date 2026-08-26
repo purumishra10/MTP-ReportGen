@@ -80,25 +80,43 @@ if (uploadDateEl)  uploadDateEl.value  = today;
 if (dbDateEl)      dbDateEl.value      = today;
 if (trackerDateEl) trackerDateEl.value = today;
 
-// ── Auth Fetch Helper (Dual Token + Cookie Auth) ─────────────────────────────
+// ── Auth Fetch Helper (Dual Token + Cookie Auth + Timeout) ───────────────────
 async function authFetch(url, options = {}) {
     const token = localStorage.getItem('session_token') || '';
     const headers = new Headers(options.headers || {});
     if (token && !headers.has('Authorization')) {
         headers.set('Authorization', `Bearer ${token}`);
     }
+
+    const timeoutMs = options.timeout || 85000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+        controller.abort(new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`));
+    }, timeoutMs);
+
     const opts = {
         ...options,
         headers,
-        credentials: 'include'
+        credentials: 'include',
+        signal: options.signal || controller.signal,
     };
-    const res = await fetch(url, opts);
-    if (res.status === 401) {
-        localStorage.removeItem('session_token');
-        showAlert('Session expired. Redirecting to login...', 'error');
-        setTimeout(() => { window.location.href = 'index.html'; }, 1500);
+
+    try {
+        const res = await fetch(url, opts);
+        clearTimeout(timer);
+        if (res.status === 401) {
+            localStorage.removeItem('session_token');
+            showAlert('Session expired. Redirecting to login...', 'error');
+            setTimeout(() => { window.location.href = 'index.html'; }, 1500);
+        }
+        return res;
+    } catch (err) {
+        clearTimeout(timer);
+        if (err.name === 'AbortError') {
+            throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s. Please try again.`);
+        }
+        throw err;
     }
-    return res;
 }
 
 // Load username & verify session
@@ -144,13 +162,13 @@ const uploadDownloadLink = document.getElementById('upload-download-link');
 // ── Consolidation timer helpers ────────────────────────────────────────────────
 const CONSOLIDATION_STAGES = [
     { at: 0,   msg: 'Uploading department files to server...' },
-    { at: 2,   msg: 'Reading and parsing DOCX structured tables...' },
-    { at: 5,   msg: 'Extracting attendance, infra & department metrics...' },
-    { at: 10,  msg: 'Running AI narrative summarisation with Gemini...' },
-    { at: 20,  msg: 'Extracting MTP placement & training activities...' },
-    { at: 35,  msg: 'Assembling formatted Master DOCX report...' },
-    { at: 45,  msg: 'Almost done — finalizing report...' },
-    { at: 60,  msg: 'Large batch processing — completing final checks...' },
+    { at: 3,   msg: 'Reading and parsing DOCX structured tables...' },
+    { at: 8,   msg: 'Extracting attendance, infra & department metrics...' },
+    { at: 15,  msg: 'Running AI narrative summarisation with Gemini...' },
+    { at: 30,  msg: 'Extracting MTP placement & training activities...' },
+    { at: 45,  msg: 'Assembling formatted Master DOCX report...' },
+    { at: 55,  msg: 'Finalizing document structure and styling...' },
+    { at: 70,  msg: 'Almost done — waiting for server response...' },
 ];
 
 let _consolidationTimer = null;
@@ -166,7 +184,7 @@ function startConsolidationTimer() {
     _originalDocTitle = document.title;
 
     // Simulate progress smoothly based on wall-clock time so tab switches don't stall it
-    const getBarPct = (s) => Math.min(92, (s / 45) * 92);
+    const getBarPct = (s) => Math.min(92, (s / 50) * 92);
 
     const tick = () => {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
@@ -211,14 +229,15 @@ if (uploadSubmitBtn) {
             const response = await authFetch('/consolidate', {
                 method: 'POST',
                 body: formData,
+                timeout: 85000,
             });
 
             if (!response.ok) {
                 let detail = `Consolidation failed (HTTP ${response.status})`;
                 if (response.status === 504) {
-                    detail = 'Server gateway timed out (504). Render killed the connection.';
+                    detail = 'Server gateway timed out (504). Render proxy killed the connection.';
                 } else if (response.status === 502) {
-                    detail = 'Server is currently restarting or unavailable (502 Bad Gateway).';
+                    detail = 'Server was deploying or restarting (502 Bad Gateway). Please retry in 10 seconds.';
                 } else {
                     try {
                         const j = await response.json();
