@@ -578,6 +578,10 @@ def _match_fingerprint(header_text: str, is_library: bool) -> str:
     ):
         return "classwork"
 
+    # Department Student Attendance tables (must not leak into Other/Narratives)
+    if ("rolls" in header_text or "roll" in header_text) and ("present" in header_text or "absent" in header_text):
+        return "student_attendance_table"
+
     # Incidents
     if "brief" in header_text and (
         "statement" in header_text or "remarks" in header_text
@@ -934,14 +938,21 @@ def _is_empty(text: str) -> bool:
 
 
 def _has_real_content(text: str) -> bool:
-    """Check if text block has meaningful content beyond just headers."""
+    """Check if text block has meaningful narrative content beyond just headers."""
     lines = text.strip().split("\n")
-    # Must have content beyond just the section label
     content_lines = [l for l in lines if not l.startswith("[") and l.strip()]
-    if not content_lines:
+    if len(content_lines) <= 1:
+        # A table with only 1 line is just a header with no data rows
         return False
-    # Check if all content lines are empty/nil
-    return any(not _is_empty(l.replace("|", "").strip()) for l in content_lines)
+
+    EMPTY_MARKERS = {"", "nil", "none", "no", "-", "—", "n/a", "na", "--", "rolls", "present", "absent", "i", "ii", "iii", "iv"}
+    for line in content_lines[1:]:
+        cells = [c.strip().lower() for c in line.split("|")]
+        non_empty = [c for c in cells if c and c not in EMPTY_MARKERS and not c.isdigit() and len(c) > 2]
+        if non_empty:
+            return True
+
+    return False
 
 
 def _count_non_empty_rows(table) -> int:

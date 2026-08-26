@@ -35,8 +35,24 @@ BORDER_HEX = "CBD5E1"                        # Subtle Slate 300 border
 
 # ── XML & Styling Helpers ─────────────────────────────────────────────────────
 
-def _set_cell_margins(cell, top=100, bottom=100, left=150, right=150):
-    """Set internal cell padding in dxa (twips, 1/20 of a pt)."""
+def _set_table_borders(table, color_hex: str = "CBD5E1"):
+    """Apply modern executive borders (clean horizontal gridlines, no vertical clutter)."""
+    tblPr = table._tbl.tblPr
+    tblBorders = parse_xml(
+        f'<w:tblBorders {nsdecls("w")}>'
+        f'<w:top w:val="single" w:sz="6" w:space="0" w:color="{DARK_BLUE_HEX}"/>'
+        f'<w:bottom w:val="single" w:sz="8" w:space="0" w:color="{DARK_BLUE_HEX}"/>'
+        f'<w:insideH w:val="single" w:sz="4" w:space="0" w:color="{color_hex}"/>'
+        f'<w:insideV w:val="none"/>'
+        f'<w:left w:val="none"/>'
+        f'<w:right w:val="none"/>'
+        f'</w:tblBorders>'
+    )
+    tblPr.append(tblBorders)
+
+
+def _set_cell_margins(cell, top=120, bottom=120, left=160, right=160):
+    """Set internal cell padding in dxa (twips, 1/20 of a pt) for generous whitespace."""
     tcPr = cell._tc.get_or_add_tcPr()
     tcMar = parse_xml(
         f'<w:tcMar {nsdecls("w")}>'
@@ -76,6 +92,7 @@ def _set_cell_text(cell, text: str, bold: bool = False, font_size: float = 9.0,
 
 def _add_header_row(table, headers: list[str]):
     """Style the first row of a table as an executive header."""
+    _set_table_borders(table)
     row = table.rows[0]
     for i, header in enumerate(headers):
         cell = row.cells[i]
@@ -98,8 +115,13 @@ def _add_data_row(table, values: list[str], row_idx: int, align_left_col: int = 
 def _add_section_heading(doc, number: int, title: str):
     """Add a numbered section heading with navy bottom border."""
     heading = doc.add_paragraph()
-    heading.paragraph_format.space_before = Pt(14)
-    heading.paragraph_format.space_after = Pt(4)
+    heading.paragraph_format.space_before = Pt(16)
+    heading.paragraph_format.space_after = Pt(5)
+    run_icon = heading.add_run("■  ")
+    run_icon.font.size = Pt(10)
+    run_icon.font.color.rgb = ACCENT_TEAL
+    run_icon.font.name = "Calibri"
+
     run = heading.add_run(f"{number}.  {title}")
     run.bold = True
     run.font.size = Pt(11.5)
@@ -353,15 +375,27 @@ def _build_department_highlights(doc, report: dict, section_num: int, all_images
             if summary:
                 _add_body_text(doc, summary)
 
-        # Other Matters
+        # Other Matters (with strict filter against table remnants)
         if other_matters:
             for matter in other_matters:
-                if isinstance(matter, str) and matter.strip():
-                    _add_body_text(doc, matter.strip(), bold_prefix="• Note: ")
+                text_matter = ""
+                if isinstance(matter, str):
+                    text_matter = matter.strip()
                 elif isinstance(matter, dict):
-                    desc = matter.get("description", "")
-                    if desc.strip():
-                        _add_body_text(doc, desc.strip(), bold_prefix="• Note: ")
+                    text_matter = (matter.get("description") or matter.get("summary") or "").strip()
+
+                if not text_matter or len(text_matter) < 15:
+                    continue
+                # Never print table header pipes or empty table row markers
+                if "|" in text_matter and any(k in text_matter.lower() for k in ("rolls", "present", "absent", "s. no", "industry visited", "location")):
+                    continue
+                if text_matter.startswith("[Other]"):
+                    clean_m = text_matter.replace("[Other]", "").strip()
+                    if not clean_m or len(clean_m) < 15 or "|" in clean_m:
+                        continue
+                    text_matter = clean_m
+
+                _add_body_text(doc, text_matter, bold_prefix="• Note: ")
 
         # Insert images inline
         img_count = _insert_dept_images(doc, dept_code, all_images, max_images=3)
