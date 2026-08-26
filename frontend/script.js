@@ -80,9 +80,16 @@ if (uploadDateEl)  uploadDateEl.value  = today;
 if (dbDateEl)      dbDateEl.value      = today;
 if (trackerDateEl) trackerDateEl.value = today;
 
-// Load username
+// Load username & verify session
 fetch('/api/me', { credentials: 'include' })
-    .then(r => r.ok ? r.json() : null)
+    .then(r => {
+        if (!r.ok) {
+            // Not authenticated or session expired after redeploy
+            window.location.href = 'index.html';
+            return null;
+        }
+        return r.json();
+    })
     .then(data => {
         if (data && data.username) {
             const el = document.getElementById('sidebar-username');
