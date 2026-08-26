@@ -80,16 +80,30 @@ if (uploadDateEl)  uploadDateEl.value  = today;
 if (dbDateEl)      dbDateEl.value      = today;
 if (trackerDateEl) trackerDateEl.value = today;
 
+// ── Auth Fetch Helper (Dual Token + Cookie Auth) ─────────────────────────────
+async function authFetch(url, options = {}) {
+    const token = localStorage.getItem('session_token') || '';
+    const headers = new Headers(options.headers || {});
+    if (token && !headers.has('Authorization')) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
+    const opts = {
+        ...options,
+        headers,
+        credentials: 'include'
+    };
+    const res = await fetch(url, opts);
+    if (res.status === 401) {
+        localStorage.removeItem('session_token');
+        showAlert('Session expired. Redirecting to login...', 'error');
+        setTimeout(() => { window.location.href = 'index.html'; }, 1500);
+    }
+    return res;
+}
+
 // Load username & verify session
-fetch('/api/me', { credentials: 'include' })
-    .then(r => {
-        if (!r.ok) {
-            // Not authenticated or session expired after redeploy
-            window.location.href = 'index.html';
-            return null;
-        }
-        return r.json();
-    })
+authFetch('/api/me')
+    .then(r => r.ok ? r.json() : null)
     .then(data => {
         if (data && data.username) {
             const el = document.getElementById('sidebar-username');
@@ -101,7 +115,7 @@ fetch('/api/me', { credentials: 'include' })
 const logoutBtn = document.getElementById('logout-btn');
 if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
-        await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+        await authFetch('/api/logout', { method: 'POST' });
         localStorage.clear();
         window.location.href = 'index.html';
     });
@@ -194,10 +208,9 @@ if (uploadSubmitBtn) {
         for (const file of files) formData.append('files', file);
 
         try {
-            const response = await fetch('/consolidate', {
+            const response = await authFetch('/consolidate', {
                 method: 'POST',
                 body: formData,
-                credentials: 'include'
             });
 
             if (!response.ok) {
@@ -223,7 +236,7 @@ if (uploadSubmitBtn) {
 
             const data = await response.json();
             if (data.download_url) {
-                const dlRes = await fetch(data.download_url, { credentials: 'include' });
+                const dlRes = await authFetch(data.download_url);
                 await downloadBlobResponse(dlRes, `Master_Daily_Report_${date}.docx`);
 
                 if (uploadResult) uploadResult.classList.remove('hidden');
@@ -270,11 +283,10 @@ if (dbGenerateBtn) {
         if (dbResult) dbResult.classList.add('hidden');
 
         try {
-            const response = await fetch('/api/generate', {
+            const response = await authFetch('/api/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ date }),
-                credentials: 'include'
             });
 
             // /api/generate now streams the DOCX directly
@@ -304,7 +316,7 @@ window.fetchTrackerData = async function() {
     trackerGrid.innerHTML = '<div class="col-span-full flex justify-center py-10"><span class="material-symbols-outlined animate-spin text-primary text-3xl">refresh</span></div>';
 
     try {
-        const res = await fetch(`/api/tracker/${date}`, { credentials: 'include' });
+        const res = await authFetch(`/api/tracker/${date}`);
         if (!res.ok) { trackerGrid.innerHTML = '<div class="col-span-full py-10 text-center text-sm text-error font-medium">Failed to load tracker (auth error?)</div>'; return; }
         const data = await res.json();
 
@@ -370,7 +382,7 @@ window.openReviewModal = function(id, dept, date, status) {
     const contentArea = document.getElementById('modal-content-area');
     contentArea.innerHTML = '<p style="color:#64748b">Loading...</p>';
 
-    fetch(`/api/tracker/${date}`, { credentials: 'include' })
+    authFetch(`/api/tracker/${date}`)
         .then(r => r.json())
         .then(data => {
             const record = data.records?.find(r => r.id === id);
@@ -422,10 +434,9 @@ if (modalRejectBtn)  modalRejectBtn.addEventListener('click',  () => submitRevie
 async function submitReviewAction(status) {
     if (!currentReviewId) return;
     try {
-        const res = await fetch('/api/tracker/review', {
+        const res = await authFetch('/api/tracker/review', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({ id: currentReviewId, status })
         });
         if (!res.ok) { const j = await res.json(); throw new Error(j.detail || 'Update failed'); }
@@ -443,7 +454,7 @@ async function fetchHistory() {
     if (!historyList) return;
 
     try {
-        const res  = await fetch('/api/history', { credentials: 'include' });
+        const res  = await authFetch('/api/history');
         const data = await res.json();
 
         historyList.innerHTML = '';
@@ -480,7 +491,7 @@ async function fetchHistory() {
 window.deleteRecord = async function(date) {
     if (!confirm(`Delete all submissions for ${date}?`)) return;
     try {
-        const res = await fetch(`/api/history/${date}`, { method: 'DELETE', credentials: 'include' });
+        const res = await authFetch(`/api/history/${date}`, { method: 'DELETE' });
         if (res.ok) { fetchHistory(); fetchTrackerData(); showAlert(`Records for ${date} deleted.`, 'success'); }
         else showAlert('Failed to delete record.');
     } catch { showAlert('Network error while deleting.'); }
@@ -494,7 +505,7 @@ if (monthlyBtn) {
     monthlyBtn.addEventListener('click', async () => {
         showLoading(monthlyBtn, monthlyLoadingBtn, true);
         try {
-            const res = await fetch('/api/monthly', { method: 'POST', credentials: 'include' });
+            const res = await authFetch('/api/monthly', { method: 'POST' });
             const data = await res.json();
             showAlert(data.message || 'Monthly report not yet implemented.', 'error');
         } catch { showAlert('Monthly report generation failed.'); }

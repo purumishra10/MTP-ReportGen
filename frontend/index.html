@@ -84,7 +84,8 @@
 
                 const data = await res.json();
                 if (res.ok) {
-                    // Store role in local storage for frontend routing
+                    // Store token and role in localStorage
+                    if (data.token) localStorage.setItem('session_token', data.token);
                     localStorage.setItem('user_role', data.role);
                     if (data.department) localStorage.setItem('dept_code', data.department);
                     

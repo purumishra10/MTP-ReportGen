@@ -55,9 +55,18 @@ def health_check():
     
 # --- Dependencies ---
 def get_current_user(request: Request):
+    # 1. Try session_token cookie
     token = request.cookies.get("session_token")
+
+    # 2. Try Authorization: Bearer <token> header fallback
+    if not token:
+        auth_header = request.headers.get("Authorization") or request.headers.get("authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
     user = get_session_user(token)
     if not user:
         raise HTTPException(status_code=401, detail="Session expired or invalid")
@@ -102,15 +111,22 @@ def login(req: LoginRequest, response: Response):
         
     token = create_session(req.username)
     
-    # Set cookie (HttpOnly for security)
+    # Set cookie with explicit root path and permissive samesite
     response.set_cookie(
         key="session_token", 
         value=token, 
-        httponly=False,  # Set to False so client JS can see if logged in easily, though HttpOnly is better for prod. We will use frontend JS to redirect based on 'role'.
+        httponly=False,
+        path="/",
+        samesite="lax",
         max_age=7*24*3600
     )
     
-    return {"message": "Logged in successfully", "role": user["role"], "department": user["department"]}
+    return {
+        "message": "Logged in successfully",
+        "token": token,
+        "role": user["role"],
+        "department": user["department"]
+    }
 
 @app.post("/api/logout")
 def logout(request: Request, response: Response):
