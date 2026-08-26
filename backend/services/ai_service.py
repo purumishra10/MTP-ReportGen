@@ -75,10 +75,12 @@ def _get_openrouter_client():
 
 # Gemini models in priority order — modern aliases tested and confirmed working
 GEMINI_MODELS = [
+    "gemini-3.5-flash-lite",
+    "models/gemini-3.5-flash-lite",
+    "gemini-2.5-flash",
     "models/gemini-2.5-flash",
+    "gemini-flash-latest",
     "models/gemini-flash-latest",
-    "models/gemini-2.5-flash-lite",
-    "models/gemini-2.5-pro",
 ]
 
 # OpenRouter fallback models
